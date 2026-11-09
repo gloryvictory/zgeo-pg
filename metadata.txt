@@ -1,0 +1,21 @@
+[general]
+name=ZGeo-PG
+qgisMinimumVersion=3.16
+qgisMaximumVersion=4.99
+description=Catalog of spatial data stored in a PostgreSQL / PostGIS database: connection settings, a list of spatial tables with geometry type, SRID, feature count, and size, background loading of characteristics with progress and cancellation, a status bar, statistics by geometry type and schema, and export of lists and tables to Excel. / Каталог пространственных данных из базы PostgreSQL / PostGIS: настройка подключения, список пространственных таблиц с типом геометрии, SRID, количеством объектов и размером, фоновое чтение характеристик с прогрессом и прерыванием, статусная строка, статистика по типу геометрии и схеме, экспорт списков и таблиц в Excel.
+about=ZGeo-PG connects to a PostgreSQL database with the PostGIS extension and shows all spatial tables. In the "Connection" tab you enter host, port, database, user and password, then connect; the list of saved connections is kept in QGIS settings. The "Tables" tab lists spatial tables with the geometry column, geometry type, SRID, estimated row count, exact feature count and table size; the values are loaded in the background without blocking the interface. A filter narrows the list by name or schema. The "Statistics" tab builds charts by geometry type and schema. Lists and statistics tables can be exported to Excel with totals. The interface switches between Russian and English without restarting QGIS.
+version=0.1.0
+author=Zamaraev Vyacheslav
+email=zamaraevvv@yandex.ru
+repository=
+homepage=https://github.com/gloryvictory/zgeo-pg
+license=MIT
+tracker=https://github.com/gloryvictory/zgeo-pg/issues
+icon=icon.svg
+experimental=True
+deprecated=False
+hasProcessingProvider=no
+supportsQt6=True
+tags=postgres,postgis,geodata,catalog,database,spatial
+category=Plugins
+changelog=0.1.0 — initial release: connection to PostgreSQL / PostGIS, list of spatial tables, background loading of feature counts and sizes, statistics and export to Excel.
