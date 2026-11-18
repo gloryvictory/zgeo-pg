@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from qgis.PyQt.QtCore import QSettings, Qt, pyqtSignal
 from qgis.PyQt.QtWidgets import (
@@ -202,21 +202,23 @@ class ZGeoPgPanel(QDockWidget):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(6, 6, 6, 6)
 
-        saved_box = QGroupBox(tr("Сохранённые соединения"))
-        saved_layout = QHBoxLayout(saved_box)
+        self._saved_box = QGroupBox(tr("Сохранённые соединения"))
+        saved_layout = QHBoxLayout(self._saved_box)
         self._saved_combo = QComboBox()
         self._saved_combo.currentTextChanged.connect(self._on_saved_selected)
         saved_layout.addWidget(self._saved_combo, 1)
-        load_btn = QPushButton(tr("Загрузить"))
-        load_btn.clicked.connect(self._on_load_saved)
-        saved_layout.addWidget(load_btn)
-        del_btn = QPushButton(tr("Удалить"))
-        del_btn.clicked.connect(self._on_delete_saved)
-        saved_layout.addWidget(del_btn)
-        layout.addWidget(saved_box)
+        self._load_btn = QPushButton(tr("Загрузить"))
+        self._load_btn.clicked.connect(self._on_load_saved)
+        saved_layout.addWidget(self._load_btn)
+        self._del_btn = QPushButton(tr("Удалить"))
+        self._del_btn.clicked.connect(self._on_delete_saved)
+        saved_layout.addWidget(self._del_btn)
+        layout.addWidget(self._saved_box)
 
         form_box = QGroupBox(tr("Параметры подключения"))
+        self._form_box = form_box
         form = _FormLayout(form_box)
+        self._conn_form = form
 
         self._conn_name = form.add_line(tr("Имя"))
         self._conn_host = form.add_line(tr("Хост"), "localhost")
@@ -228,9 +230,11 @@ class ZGeoPgPanel(QDockWidget):
 
         actions = QHBoxLayout()
         save_btn = QPushButton(tr("Сохранить соединение"))
+        self._save_btn = save_btn
         save_btn.clicked.connect(self._on_save_connection)
         actions.addWidget(save_btn)
         test_btn = QPushButton(tr("Проверить подключение"))
+        self._test_btn = test_btn
         test_btn.clicked.connect(self._on_test_connection)
         actions.addWidget(test_btn)
         actions.addStretch(1)
@@ -289,6 +293,15 @@ class ZGeoPgPanel(QDockWidget):
         self._search_edit.setPlaceholderText(tr("Поиск"))
         self._only_geometry_check.setText(tr("Только с геометрией"))
         self._stats_export_button.setText(tr("Экспорт в Excel"))
+        self._saved_box.setTitle(tr("Сохранённые соединения"))
+        self._load_btn.setText(tr("Загрузить"))
+        self._del_btn.setText(tr("Удалить"))
+        self._save_btn.setText(tr("Сохранить соединение"))
+        self._test_btn.setText(tr("Проверить подключение"))
+        self._form_box.setTitle(tr("Параметры подключения"))
+        self._conn_form.retranslate()
+        self._size_chart.set_title(tr("По размеру"))
+        self._geom_chart.set_title(tr("По типу геометрии"))
         self._populate_table_headers()
         self._populate_stats_table()
         self._update_summary()
@@ -624,6 +637,9 @@ class ZGeoPgPanel(QDockWidget):
     def _populate_stats_table(self) -> None:
         if not hasattr(self, "_schema_table"):
             return
+        self._schema_table.setHorizontalHeaderLabels(
+            [tr("Схема"), tr("Кол-во"), tr("Размер")]
+        )
         header = self._schema_table.horizontalHeader()
         if header is not None:
             self._schema_table.horizontalHeader().setSectionResizeMode(
@@ -716,10 +732,17 @@ class _FormLayout:
     def __init__(self, box: QGroupBox) -> None:
         self._layout = QVBoxLayout(box)
         self._box = box
+        self._labels: List[Tuple[QLabel, str]] = []
+
+    def retranslate(self) -> None:
+        """Обновить подписи полей при смене языка."""
+        for label, source in self._labels:
+            label.setText(tr(source))
 
     def add_line(self, label: str, default: str = "", password: bool = False) -> QLineEdit:
         row = QHBoxLayout()
         lab = QLabel(label)
+        self._labels.append((lab, label))
         lab.setFixedWidth(120)
         edit = QLineEdit(default)
         if password:
@@ -732,6 +755,7 @@ class _FormLayout:
     def add_spin(self, label: str, default: int, minimum: int, maximum: int) -> QSpinBox:
         row = QHBoxLayout()
         lab = QLabel(label)
+        self._labels.append((lab, label))
         lab.setFixedWidth(120)
         spin = QSpinBox()
         spin.setRange(minimum, maximum)

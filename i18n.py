@@ -46,6 +46,13 @@ EN_TRANSLATIONS = {
     "Комментарий": "Comment",
     "Описание": "Description",
 
+    # Единицы измерения
+    "Б": "B",
+    "КБ": "KB",
+    "МБ": "MB",
+    "ГБ": "GB",
+    "ТБ": "TB",
+
     # Соединение
     "Имя": "Name",
     "Хост": "Host",
@@ -61,6 +68,11 @@ EN_TRANSLATIONS = {
     "Удалить соединение": "Delete connection",
     "Проверить подключение": "Test connection",
     "Новое соединение": "New connection",
+    "Сохранённые соединения": "Saved connections",
+    "Параметры подключения": "Connection parameters",
+    "Загрузить": "Load",
+    "Удалить": "Delete",
+    "Выбрано: {} из {}": "Selected: {} of {}",
     "Подключено к": "Connected to",
     "Ошибка подключения": "Connection error",
     "Невозможно подключиться к базе данных": "Unable to connect to the database",
@@ -88,6 +100,7 @@ EN_TRANSLATIONS = {
     # Статистика
     "По размеру": "By size",
     "По типу": "By type",
+    "По типу геометрии": "By geometry type",
     "По схеме": "By schema",
     "Статистика по схемам": "Statistics by schema",
     "Статистика по типу геометрии": "Statistics by geometry type",
@@ -106,6 +119,10 @@ EN_TRANSLATIONS = {
     "Не удалось экспортировать таблицу": "Failed to export the table",
     "Таблица экспортирована": "The table was exported",
     "Не удалось открыть проводник": "Failed to open the Explorer",
+    "Не удалось экспортировать таблицу:\n{}": "Failed to export the table:\n{}",
+    "Таблица экспортирована:\n{}\n\nНе удалось открыть проводник:\n{}": (
+        "The table was exported:\n{}\n\nFailed to open the Explorer:\n{}"
+    ),
     "Итого": "Total",
     "Итого таблиц": "Total tables",
     "Итого объектов": "Total features",
@@ -135,6 +152,19 @@ EN_TRANSLATIONS = {
     "Закрыть": "Close",
     "Атрибутивные столбцы": "Attribute columns",
     "Столбец геометрии": "Geometry column",
+    "Геометрия / география": "Geometry / geography",
+
+    # Плагин и панель
+    "ZGeo-PG-Каталог": "ZGeo-PG Catalog",
+    "ZGeo-PG-Каталог — каталог пространственных данных PostGIS": (
+        "ZGeo-PG Catalog — PostGIS spatial data catalog"
+    ),
+    "Открыть плавающую панель ZGeo-PG-Каталог": (
+        "Open the ZGeo-PG Catalog dock"
+    ),
+    "ZGeo-PG — каталог пространственных данных PostGIS": (
+        "ZGeo-PG — PostGIS spatial data catalog"
+    ),
 }
 
 _CATEGORY_SOURCES = {}

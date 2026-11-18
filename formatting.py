@@ -1,6 +1,6 @@
 """Общие функции форматирования значений для интерфейса."""
 
-from .i18n import tr
+from .i18n import LANGUAGE_EN, get_language, tr
 
 
 def format_size(size: int) -> str:
@@ -26,7 +26,8 @@ def format_number(value) -> str:
     """Форматировать число с разделителями тысяч."""
     if value is None:
         return "—"
+    separator = "," if get_language() == LANGUAGE_EN else " "
     try:
-        return f"{int(value):,}".replace(",", " ")
+        return f"{int(value):,}".replace(",", separator)
     except (TypeError, ValueError):
         return str(value)
