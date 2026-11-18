@@ -35,7 +35,7 @@ class TypeStat:
 
 
 def _table_size(table: SpatialTable) -> int:
-    return table.total_size if table.total_size is not None else 0
+    return table.full_size
 
 
 def build_size_distribution(tables: Iterable[SpatialTable]) -> List[SizeBucketStat]:

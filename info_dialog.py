@@ -28,6 +28,7 @@ def show_table_info(parent, table: SpatialTable) -> None:
     form.addRow(tr("Таблица"), _label(table.name))
     form.addRow(tr("Схема"), _label(table.schema))
     form.addRow(tr("Полное имя"), _label(table.full_name))
+    form.addRow(tr("Комментарий"), _label(table.comment or tr("—")))
     form.addRow(tr("Столбец геометрии"), _label(table.geom_column))
     form.addRow(tr("Геометрия / география"), _label(table.spatial_type))
     form.addRow(tr("Тип"), _label(table.geom_type))
@@ -37,9 +38,24 @@ def show_table_info(parent, table: SpatialTable) -> None:
     form.addRow(tr("Строк (точно)"), _label(format_number(table.feature_count)))
     form.addRow(
         tr("Размер"),
-        _label(format_size(table.total_size) if table.total_size is not None else "—"),
+        _label(format_size(table.data_size) if table.data_size is not None else "—"),
+    )
+    form.addRow(
+        tr("Размер индексов"),
+        _label(format_size(table.index_size) if table.index_size is not None else "—"),
     )
     form.addRow(tr("Пустая геометрия"), _label(tr("—") if table.has_geometry else tr("Да")))
+    form.addRow(tr("Пространственный индекс"), _label(tr("Да") if table.has_spatial_index else tr("Нет")))
+    form.addRow(tr("Имя пространственного индекса"), _label(table.spatial_index_name or tr("—")))
+    form.addRow(
+        tr("Размер пространственного индекса"),
+        _label(
+            format_size(table.spatial_index_size)
+            if table.spatial_index_size is not None
+            else tr("—")
+        ),
+    )
+    form.addRow(tr("Полный размер"), _label(format_size(table.full_size)))
     layout.addLayout(form)
 
     close_btn = QPushButton(tr("Закрыть"))
@@ -52,5 +68,7 @@ def show_table_info(parent, table: SpatialTable) -> None:
 def _label(text: str) -> QLabel:
     label = QLabel(text)
     label.setWordWrap(True)
-    label.setTextInteractionFlags(label.textInteractionFlags() | 0x1)  # TextSelectableByMouse
+    label.setTextInteractionFlags(
+        label.textInteractionFlags() | Qt.TextInteractionFlag.TextSelectableByMouse
+    )
     return label

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Dict, List, Optional, Tuple
 
 from qgis.PyQt.QtCore import QSettings, Qt, pyqtSignal
 from qgis.PyQt.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QCheckBox,
     QComboBox,
     QDockWidget,
@@ -15,6 +17,8 @@ from qgis.PyQt.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMenu,
+    QMenu,
     QMessageBox,
     QPushButton,
     QSpinBox,
@@ -28,31 +32,42 @@ from qgis.PyQt.QtWidgets import (
 
 from .catalog import (
     SpatialTable,
+    create_spatial_index,
     crs_label,
     fetch_crs_auth,
+    fetch_spatial_index,
     fetch_spatial_tables,
     parse_srid,
+    reindex_spatial_index,
 )
 from .charts import BarChart
 from .connection import (
     PGConnection,
     close_connection,
     delete_connection,
+    last_connection_name,
     list_saved_connections,
     load_connection,
     open_connection,
     save_connection,
+    sync_connections_from_sqlite,
 )
 from .formatting import format_number, format_size
 from .i18n import EN_TRANSLATIONS, LANGUAGE_EN, LANGUAGE_KEY, get_language, set_language, tr
-from .load_task import LoadTablesTask
+from .load_task import IndexTask, LoadTablesTask
 from .stats import (
     build_geometry_type_distribution,
     build_schema_distribution,
     build_size_distribution,
     totals,
 )
-from .table_export import export_rows_with_dialog, export_table_with_dialog
+from .table_export import (
+    FORMAT_HTML,
+    FORMAT_XLSX,
+    ask_export_format,
+    export_rows_with_dialog,
+    export_table_with_dialog,
+)
 from .version import get_plugin_version
 
 GEO_TYPE_COLORS = {}
@@ -70,12 +85,16 @@ class ZGeoPgPanel(QDockWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("ZGeoPgPanel")
-        self.setWindowTitle("ZGeo-PG")
+        self.setWindowTitle(self._window_title())
         self._settings = QSettings()
         self._conn: Optional[PGConnection] = None
         self._db = None
         self._tables: List[SpatialTable] = []
         self._task: Optional[LoadTablesTask] = None
+        self._index_task: Optional[IndexTask] = None
+        self._index_action = IndexTask.ACTION_CREATE
+        self._index_changed: List[int] = []
+        self._index_errors: List[str] = []
         self._schema_filter: Optional[str] = None
         self._only_geometry = True
 
@@ -84,6 +103,7 @@ class ZGeoPgPanel(QDockWidget):
         self._build_tables_tab()
         self._build_stats_tab()
         self._retranslate()
+        self._restore_connections()
 
         self.setMinimumWidth(560)
         self.setMinimumHeight(420)
@@ -109,8 +129,13 @@ class ZGeoPgPanel(QDockWidget):
 
         self._status = QStatusBar()
         self._status.setSizeGripEnabled(True)
+        self._connection_dot = QLabel()
+        self._connection_dot.setFixedSize(10, 10)
+        self._connection_label = QLabel()
         self._status_label = QLabel()
         self._selected_label = QLabel()
+        self._status.addWidget(self._connection_dot)
+        self._status.addWidget(self._connection_label)
         self._status.addWidget(self._status_label, 1)
         self._status.addPermanentWidget(self._selected_label)
         outer.addWidget(self._status)
@@ -123,9 +148,6 @@ class ZGeoPgPanel(QDockWidget):
         layout.setContentsMargins(6, 6, 6, 6)
 
         bar = QHBoxLayout()
-        self._connect_button = QPushButton()
-        self._connect_button.clicked.connect(self._on_connect)
-        bar.addWidget(self._connect_button)
         self._refresh_button = QPushButton()
         self._refresh_button.clicked.connect(self._on_refresh)
         self._refresh_button.setEnabled(False)
@@ -138,6 +160,16 @@ class ZGeoPgPanel(QDockWidget):
         self._export_button.clicked.connect(self._on_export)
         self._export_button.setEnabled(False)
         bar.addWidget(self._export_button)
+        self._create_all_indexes_button = QPushButton()
+        self._create_all_indexes_button.clicked.connect(self._on_create_indexes_for_all)
+        self._create_all_indexes_button.setEnabled(False)
+        bar.addWidget(self._create_all_indexes_button)
+        self._refresh_all_indexes_button = QPushButton()
+        self._refresh_all_indexes_button.clicked.connect(
+            self._on_refresh_indexes_for_all
+        )
+        self._refresh_all_indexes_button.setEnabled(False)
+        bar.addWidget(self._refresh_all_indexes_button)
         bar.addStretch(1)
         self._cancel_button = QPushButton()
         self._cancel_button.clicked.connect(self._on_cancel)
@@ -166,6 +198,8 @@ class ZGeoPgPanel(QDockWidget):
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.verticalHeader().setVisible(False)
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
+        self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._table.customContextMenuRequested.connect(self._on_tables_context_menu)
         layout.addWidget(self._table, 1)
 
         self._summary_label = QLabel()
@@ -183,9 +217,15 @@ class ZGeoPgPanel(QDockWidget):
         layout.addWidget(self._size_chart)
         layout.addWidget(self._geom_chart)
 
-        self._schema_table = QTableWidget(0, 3)
+        self._schema_table = QTableWidget(0, 4)
         self._schema_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._schema_table.verticalHeader().setVisible(False)
+        self._schema_table.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu
+        )
+        self._schema_table.customContextMenuRequested.connect(
+            self._on_stats_context_menu
+        )
         layout.addWidget(self._schema_table, 1)
 
         stats_bar = QHBoxLayout()
@@ -193,6 +233,7 @@ class ZGeoPgPanel(QDockWidget):
         self._stats_export_button.clicked.connect(self._on_stats_export)
         stats_bar.addWidget(self._stats_export_button)
         stats_bar.addStretch(1)
+
         layout.addLayout(stats_bar)
 
         self._tabs.addTab(page, tr("Статистика"))
@@ -237,11 +278,14 @@ class ZGeoPgPanel(QDockWidget):
         self._test_btn = test_btn
         test_btn.clicked.connect(self._on_test_connection)
         actions.addWidget(test_btn)
+        self._connect_button = QPushButton()
+        self._connect_button.clicked.connect(self._on_connect)
+        actions.addWidget(self._connect_button)
         actions.addStretch(1)
         layout.addLayout(actions)
         layout.addStretch(1)
 
-        self._tabs.addTab(page, tr("Соединение"))
+        self._tabs.addTab(page, tr("Подключения"))
 
     # --------------------------------------------------------------- helpers
     def _current_connection_form(self) -> PGConnection:
@@ -256,6 +300,21 @@ class ZGeoPgPanel(QDockWidget):
 
     def _set_status(self, text: str) -> None:
         self._status_label.setText(text)
+
+    def _update_connection_state(self) -> None:
+        """Зелёный кружок и «Подключено», если соединение открыто."""
+
+        connected = self._db is not None
+        color = "#2e9e4f" if connected else "#c0392b"
+        self._connection_dot.setStyleSheet(
+            f"background-color: {color}; border-radius: 5px;"
+        )
+        self._connection_dot.setToolTip(
+            tr("Подключено") if connected else tr("Не подключено")
+        )
+        self._connection_label.setText(
+            tr("Подключено") if connected else tr("Не подключено")
+        )
 
     def _update_selected(self) -> None:
         rows = self._table.rowCount()
@@ -276,15 +335,19 @@ class ZGeoPgPanel(QDockWidget):
         self._retranslate()
         self.language_changed.emit(new_lang)
 
+    def _window_title(self) -> str:
+        """Заголовок окна с текущей версией плагина."""
+        return "ZGeo-PG " + get_plugin_version()
+
     def _retranslate(self) -> None:
-        self.setWindowTitle("ZGeo-PG")
+        self.setWindowTitle(self._window_title())
         self._title_label.setText(
             tr("ZGeo-PG — каталог пространственных данных PostGIS") + "  v" + get_plugin_version()
         )
         self._lang_button.setText("RU" if get_language() == LANGUAGE_EN else "EN")
-        self._tabs.setTabText(0, tr("Таблицы"))
-        self._tabs.setTabText(1, tr("Статистика"))
-        self._tabs.setTabText(2, tr("Соединение"))
+        self._tabs.setTabText(0, tr("Подключения"))
+        self._tabs.setTabText(1, tr("Таблицы"))
+        self._tabs.setTabText(2, tr("Статистика"))
         self._connect_button.setText(tr("Отключиться") if self._db else tr("Подключиться"))
         self._refresh_button.setText(tr("Обновить"))
         self._info_button.setText(tr("Информация"))
@@ -293,6 +356,12 @@ class ZGeoPgPanel(QDockWidget):
         self._search_edit.setPlaceholderText(tr("Поиск"))
         self._only_geometry_check.setText(tr("Только с геометрией"))
         self._stats_export_button.setText(tr("Экспорт в Excel"))
+        self._create_all_indexes_button.setText(
+            tr("Создать все пространственные индексы")
+        )
+        self._refresh_all_indexes_button.setText(
+            tr("Обновить все пространственные индексы")
+        )
         self._saved_box.setTitle(tr("Сохранённые соединения"))
         self._load_btn.setText(tr("Загрузить"))
         self._del_btn.setText(tr("Удалить"))
@@ -306,6 +375,7 @@ class ZGeoPgPanel(QDockWidget):
         self._populate_stats_table()
         self._update_summary()
         self._update_selected()
+        self._update_connection_state()
 
     # -------------------------------------------------------------- database
     def _on_connect(self) -> None:
@@ -315,15 +385,18 @@ class ZGeoPgPanel(QDockWidget):
         conn = self._current_connection_form()
         try:
             self._set_status(tr("Подключение") + "...")
+            self._update_connection_state()
             self._db = open_connection(conn)
             self._conn = conn
         except Exception as error:  # noqa: BLE001
             self._db = None
             self._conn = None
             self._set_status(tr("Готово"))
+            self._update_connection_state()
             QMessageBox.critical(self, "ZGeo-PG", tr("Ошибка подключения") + ":\n" + str(error))
             return
         self._retranslate()
+        self._update_connection_state()
         self._reload_tables()
 
     def _disconnect(self) -> None:
@@ -338,7 +411,10 @@ class ZGeoPgPanel(QDockWidget):
         self._refresh_button.setEnabled(False)
         self._info_button.setEnabled(False)
         self._export_button.setEnabled(False)
+        self._create_all_indexes_button.setEnabled(False)
+        self._refresh_all_indexes_button.setEnabled(False)
         self._retranslate()
+        self._update_connection_state()
         self._set_status(tr("Готово"))
 
     def _on_refresh(self) -> None:
@@ -359,6 +435,8 @@ class ZGeoPgPanel(QDockWidget):
         self._populate_table()
         self._refresh_button.setEnabled(True)
         self._export_button.setEnabled(True)
+        self._create_all_indexes_button.setEnabled(True)
+        self._refresh_all_indexes_button.setEnabled(True)
         self._populate_stats()
         self._set_status(tr("Готово"))
         if tables:
@@ -374,6 +452,7 @@ class ZGeoPgPanel(QDockWidget):
         self._task.finished_all.connect(self._on_load_finished)
         self._cancel_button.setEnabled(True)
         self._refresh_button.setEnabled(False)
+        self._refresh_all_indexes_button.setEnabled(False)
         self._set_status(tr("Чтение характеристик") + "...")
         self._task.start()
 
@@ -403,6 +482,7 @@ class ZGeoPgPanel(QDockWidget):
     def _on_load_finished(self, cancelled: bool, error: str) -> None:
         self._cancel_button.setEnabled(False)
         self._refresh_button.setEnabled(True)
+        self._refresh_all_indexes_button.setEnabled(self._db is not None)
         self._populate_stats()
         if error:
             self._set_status(tr("Ошибка") + ": " + error)
@@ -417,6 +497,7 @@ class ZGeoPgPanel(QDockWidget):
         headers = [
             tr("Схема"),
             tr("Таблица"),
+            tr("Комментарий"),
             tr("Столбец"),
             tr("Тип"),
             tr("SRID"),
@@ -424,6 +505,11 @@ class ZGeoPgPanel(QDockWidget):
             tr("Строк (оценка)"),
             tr("Строк (точно)"),
             tr("Размер"),
+            tr("Размер индексов"),
+            tr("Пространственный индекс"),
+            tr("Имя пространственного индекса"),
+            tr("Размер пространственного индекса"),
+            tr("Полный размер"),
         ]
         self._table.setColumnCount(len(headers))
         self._table.setHorizontalHeaderLabels(headers)
@@ -450,7 +536,10 @@ class ZGeoPgPanel(QDockWidget):
             if self._only_geometry and not table.has_geometry:
                 continue
             if query:
-                haystack = f"{table.schema} {table.name} {table.geom_column}".casefold()
+                haystack = (
+                    f"{table.schema} {table.name} {table.geom_column} "
+                    f"{table.comment}"
+                ).casefold()
                 if query not in haystack:
                     continue
             result.append(table)
@@ -461,13 +550,23 @@ class ZGeoPgPanel(QDockWidget):
         cells = [
             table.schema,
             table.name,
+            table.comment,
             table.geom_column,
             geom_label,
             "" if table.srid is None else str(table.srid),
             crs_label(table.srid, self._auth_for(table.srid)),
             format_number(table.estimated_rows),
             format_number(table.feature_count),
-            format_size(table.total_size) if table.total_size is not None else "—",
+            format_size(table.data_size) if table.data_size is not None else "—",
+            format_size(table.index_size) if table.index_size is not None else "—",
+            tr("Да") if table.has_spatial_index else tr("Нет"),
+            table.spatial_index_name or "—",
+            (
+                format_size(table.spatial_index_size)
+                if table.spatial_index_size is not None
+                else "—"
+            ),
+            format_size(table.full_size),
         ]
         for column, value in enumerate(cells):
             item = QTableWidgetItem(str(value))
@@ -516,7 +615,8 @@ class ZGeoPgPanel(QDockWidget):
         self._populate_table()
 
     def _on_selection_changed(self) -> None:
-        self._info_button.setEnabled(len(self._selected_indexes()) == 1)
+        enabled = len(self._selected_indexes()) == 1
+        self._info_button.setEnabled(enabled)
         self._update_selected()
 
     def _update_summary(self) -> None:
@@ -531,20 +631,31 @@ class ZGeoPgPanel(QDockWidget):
     # ---------------------------------------------------------------- actions
     def _on_info(self) -> None:
         indexes = self._selected_indexes()
-        if len(indexes) != 1:
+        visible = self._visible_tables()
+        if len(indexes) != 1 or indexes[0] >= len(visible):
+            QMessageBox.information(
+                self, "ZGeo-PG", tr("Выберите одну таблицу в списке")
+            )
             return
-        table = self._visible_tables()[indexes[0]]
+        table = visible[indexes[0]]
         from .info_dialog import show_table_info
 
         show_table_info(self, table)
 
     def _on_export(self) -> None:
+        """Экспорт списка таблиц: выбор «Excel» или «HTML»."""
+
         visible = self._visible_tables()
         if not visible:
             return
+        export_format = ask_export_format(self, self._export_button)
+        if export_format is None:
+            return
+
         headers = [
             tr("Схема"),
             tr("Таблица"),
+            tr("Комментарий"),
             tr("Столбец"),
             tr("Тип"),
             tr("SRID"),
@@ -552,6 +663,11 @@ class ZGeoPgPanel(QDockWidget):
             tr("Строк (оценка)"),
             tr("Строк (точно)"),
             tr("Размер"),
+            tr("Размер индексов"),
+            tr("Пространственный индекс"),
+            tr("Имя пространственного индекса"),
+            tr("Размер пространственного индекса"),
+            tr("Полный размер"),
         ]
         rows = []
         for table in visible:
@@ -559,45 +675,100 @@ class ZGeoPgPanel(QDockWidget):
                 [
                     table.schema,
                     table.name,
+                    table.comment,
                     table.geom_column,
                     _geometry_label(table),
                     "" if table.srid is None else table.srid,
                     crs_label(table.srid, self._auth_for(table.srid)),
                     table.estimated_rows,
                     table.feature_count if table.feature_count is not None else "",
-                    table.total_size if table.total_size is not None else "",
+                    table.data_size if table.data_size is not None else "",
+                    table.index_size if table.index_size is not None else "",
+                    tr("Да") if table.has_spatial_index else tr("Нет"),
+                    table.spatial_index_name or "",
+                    (
+                        table.spatial_index_size
+                        if table.spatial_index_size is not None
+                        else ""
+                    ),
+                    table.full_size,
                 ]
             )
-        count, features, size = totals(visible)
-        rows.append(
-            [
-                "",
-                "",
-                "",
-                "",
-                "",
-                tr("Итого"),
-                count,
-                features,
-                size,
-            ]
-        )
+        rows.append(self._totals_row(visible))
+
+        default_name = "zgeo-pg_tables.html" if export_format == FORMAT_HTML else "zgeo-pg_tables.xlsx"
         export_rows_with_dialog(
             self,
             headers,
             rows,
-            "zgeo-pg_tables.xlsx",
+            default_name,
             tr("Таблицы"),
+            export_format=export_format,
+            total_index=len(rows) - 1,
         )
 
+    def _totals_row(self, visible: List[SpatialTable]) -> List[object]:
+        """Строка «Итого»: суммы по каждому числовому столбцу списка."""
+
+        count, features, _size = totals(visible)
+        estimated = sum(table.estimated_rows or 0 for table in visible)
+        data_size = sum(table.data_size or 0 for table in visible)
+        indexes = sum(table.index_size or 0 for table in visible)
+        spatial_index_size = sum(
+            table.spatial_index_size
+            for table in visible
+            if table.spatial_index_size is not None
+        )
+        full_size = sum(table.full_size for table in visible)
+        return [
+            tr("Итого"),
+            f"{count} " + tr("таблиц"),
+            "",
+            "",
+            "",
+            "",
+            "",
+            estimated,
+            features,
+            data_size,
+            indexes,
+            "",
+            "",
+            spatial_index_size,
+            full_size,
+        ]
+
     def _on_stats_export(self) -> None:
+        """Экспорт статистики по схемам с итоговой строкой."""
+
         if self._schema_table.rowCount() == 0:
             return
+        export_format = ask_export_format(self, self._stats_export_button)
+        if export_format is None:
+            return
+        count_total = 0
+        size_total = 0
+        for row in range(self._schema_table.rowCount()):
+            count_item = self._schema_table.item(row, 1)
+            size_item = self._schema_table.item(row, 2)
+            count_raw = (
+                count_item.data(Qt.ItemDataRole.UserRole) if count_item else None
+            )
+            size_raw = size_item.data(Qt.ItemDataRole.UserRole) if size_item else None
+            if isinstance(count_raw, int):
+                count_total += count_raw
+            if isinstance(size_raw, int):
+                size_total += size_raw
+        default_name = (
+            "zgeo-pg_stats.html" if export_format == FORMAT_HTML else "zgeo-pg_stats.xlsx"
+        )
         export_table_with_dialog(
             self,
             self._schema_table,
-            "zgeo-pg_stats.xlsx",
+            default_name,
             tr("Статистика по схемам"),
+            summary_rows=[[tr("Итого"), count_total, size_total, ""]],
+            export_format=export_format,
         )
 
     # -------------------------------------------------------------- stats tab
@@ -620,14 +791,21 @@ class ZGeoPgPanel(QDockWidget):
 
         schema_stats = build_schema_distribution(self._tables)
         self._schema_table.setRowCount(len(schema_stats))
-        self._schema_table.setColumnCount(3)
-        self._schema_table.setHorizontalHeaderLabels(
-            [tr("Схема"), tr("Кол-во"), tr("Размер")]
-        )
+        self._schema_table.setColumnCount(4)
         for row, stat in enumerate(schema_stats):
             self._schema_table.setItem(row, 0, QTableWidgetItem(stat.name))
-            self._schema_table.setItem(row, 1, QTableWidgetItem(str(stat.count)))
-            self._schema_table.setItem(row, 2, QTableWidgetItem(format_size(stat.total_size)))
+            count_item = QTableWidgetItem(str(stat.count))
+            count_item.setData(Qt.ItemDataRole.UserRole, stat.count)
+            self._schema_table.setItem(row, 1, count_item)
+            size_item = QTableWidgetItem(format_size(stat.total_size))
+            size_item.setData(Qt.ItemDataRole.UserRole, stat.total_size)
+            self._schema_table.setItem(row, 2, size_item)
+            indexed = all(
+                table.has_spatial_index for table in self._tables_of_schema(stat.name)
+            )
+            self._schema_table.setItem(
+                row, 3, QTableWidgetItem(tr("Да") if indexed else tr("Нет"))
+            )
         self._schema_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.ResizeToContents
         )
@@ -638,7 +816,12 @@ class ZGeoPgPanel(QDockWidget):
         if not hasattr(self, "_schema_table"):
             return
         self._schema_table.setHorizontalHeaderLabels(
-            [tr("Схема"), tr("Кол-во"), tr("Размер")]
+            [
+                tr("Схема"),
+                tr("Кол-во"),
+                tr("Размер"),
+                tr("Пространственный индекс"),
+            ]
         )
         header = self._schema_table.horizontalHeader()
         if header is not None:
@@ -647,7 +830,229 @@ class ZGeoPgPanel(QDockWidget):
             )
             self._schema_table.horizontalHeader().setStretchLastSection(True)
 
+    # -------------------------------------------------------- spatial indexes
+    def _tables_of_schema(self, schema: str) -> List[SpatialTable]:
+        return [table for table in self._tables if table.schema == schema]
+
+    def _on_tables_context_menu(self, position) -> None:
+        """Меню индекса для строки списка таблиц под курсором."""
+
+        index = self._table.indexAt(position)
+        if not index.isValid():
+            return
+        visible = self._visible_tables()
+        if index.row() >= len(visible):
+            return
+        if index.row() not in self._selected_indexes():
+            self._table.selectRow(index.row())
+        tables = [
+            visible[row] for row in self._selected_indexes() if row < len(visible)
+        ]
+        if not tables:
+            return
+        # Состав меню зависит от значения в колонке «Пространственный индекс»
+        # строки, на которой вызвано меню.
+        has_index = visible[index.row()].has_spatial_index
+        menu = QMenu(self)
+        if has_index:
+            refresh_action = menu.addAction(tr("Обновить пространственный индекс"))
+            drop_action = menu.addAction(tr("Удалить пространственный индекс"))
+        else:
+            create_action = menu.addAction(tr("Создать пространственный индекс"))
+            refresh_action = None
+            drop_action = None
+        for item in menu.actions():
+            item.setEnabled(self._db is not None)
+        chosen = menu.exec(self._table.viewport().mapToGlobal(position))
+        if chosen is None:
+            return
+        if chosen == refresh_action:
+            self._refresh_indexes(tables)
+        elif chosen == drop_action:
+            self._drop_indexes(tables)
+        else:
+            self._create_indexes(tables)
+
+    def _on_stats_context_menu(self, position) -> None:
+        """Меню индекса для строки статистики по схемам."""
+
+        index = self._schema_table.indexAt(position)
+        if not index.isValid():
+            return
+        self._schema_table.selectRow(index.row())
+        schema_item = self._schema_table.item(index.row(), 0)
+        value_item = self._schema_table.item(index.row(), 3)
+        if schema_item is None or value_item is None:
+            return
+        tables = self._tables_of_schema(schema_item.text())
+        if not tables:
+            return
+        # Меню показывается только для строк со значением «Нет» в колонке
+        # наличия пространственного индекса.
+        if value_item.text() != tr("Нет"):
+            return
+        menu = QMenu(self)
+        action = menu.addAction(tr("Создать пространственный индекс"))
+        action.setEnabled(self._db is not None)
+        if menu.exec(self._schema_table.viewport().mapToGlobal(position)) != action:
+            return
+        self._create_indexes(tables)
+
+    def _on_create_indexes_for_all(self) -> None:
+        self._create_indexes(list(self._tables))
+
+    def _on_refresh_indexes_for_all(self) -> None:
+        self._refresh_indexes(list(self._tables))
+
+    def _on_refresh_indexes_for_all(self) -> None:
+        self._refresh_indexes(list(self._tables))
+
+    def _create_indexes(self, tables: List[SpatialTable]) -> None:
+        self._run_index_action(IndexTask.ACTION_CREATE, tables)
+
+    def _refresh_indexes(self, tables: List[SpatialTable]) -> None:
+        self._run_index_action(IndexTask.ACTION_REINDEX, tables)
+
+    def _drop_indexes(self, tables: List[SpatialTable]) -> None:
+        names = [table.full_name for table in tables if table.has_spatial_index]
+        if not names:
+            QMessageBox.information(
+                self, "ZGeo-PG", tr("Пространственный индекс не найден")
+            )
+            return
+        answer = QMessageBox.question(
+            self,
+            "ZGeo-PG",
+            tr("Удалить пространственный индекс") + f"?\n\n" + "\n".join(names[:10]),
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self._run_index_action(IndexTask.ACTION_DROP, tables)
+
+    def _run_index_action(self, action: str, tables: List[SpatialTable]) -> None:
+        if self._db is None or self._conn is None:
+            return
+        if not tables:
+            QMessageBox.information(
+                self, "ZGeo-PG", tr("Выберите одну таблицу в списке")
+            )
+            return
+        if action in (IndexTask.ACTION_REINDEX, IndexTask.ACTION_DROP):
+            targets = [table for table in tables if table.has_spatial_index]
+            if not targets:
+                QMessageBox.information(
+                    self, "ZGeo-PG", tr("Пространственный индекс не найден")
+                )
+                return
+        else:
+            targets = [table for table in tables if not table.has_spatial_index]
+            if not targets:
+                QMessageBox.information(
+                    self, "ZGeo-PG", tr("Пространственный индекс уже создан")
+                )
+                return
+
+        keys = {(table.schema, table.name) for table in targets}
+        jobs = [
+            (position, table, action)
+            for position, table in enumerate(self._tables)
+            if (table.schema, table.name) in keys
+        ]
+        self._stop_index_task()
+        self._index_action = action
+        self._index_changed = []
+        self._index_errors = []
+        self._index_task = IndexTask(self._conn, jobs, self)
+        self._index_task.table_done.connect(self._on_index_done)
+        self._index_task.progress.connect(self._on_index_progress)
+        self._index_task.finished_all.connect(self._on_index_finished)
+        self._create_all_indexes_button.setEnabled(False)
+        self._refresh_all_indexes_button.setEnabled(False)
+        self._set_status(self._index_action_label() + "...")
+        self._index_task.start()
+
+    def _stop_index_task(self) -> None:
+        if self._index_task is not None:
+            try:
+                self._index_task.request_cancel()
+                self._index_task.wait(200)
+            except RuntimeError:
+                pass
+            self._index_task = None
+
+    def _on_index_done(self, index: int, _action: str, error: str) -> None:
+        if error:
+            self._index_errors.append(error)
+            return
+        self._index_changed.append(index)
+
+    def _index_action_label(self) -> str:
+        if self._index_action == IndexTask.ACTION_CREATE:
+            return tr("Создание пространственного индекса")
+        if self._index_action == IndexTask.ACTION_DROP:
+            return tr("Удаление пространственного индекса")
+        return tr("Обновление пространственного индекса")
+
+    def _on_index_progress(self, done: int, total: int) -> None:
+        self._set_status(f"{self._index_action_label()}... {done} / {total}")
+
+    def _on_index_finished(self, cancelled: bool, error: str) -> None:
+        for position in list(self._index_changed):
+            self._refresh_index_info(position)
+        self._index_changed = []
+        self._populate_stats()
+        self._create_all_indexes_button.setEnabled(self._db is not None)
+        self._refresh_all_indexes_button.setEnabled(self._db is not None)
+        if error:
+            self._set_status(tr("Ошибка") + ": " + error)
+            QMessageBox.critical(self, "ZGeo-PG", tr("Ошибка") + ":\n" + error)
+        elif self._index_errors:
+            details = "\n".join(self._index_errors[:10])
+            self._set_status(tr("Ошибка"))
+            QMessageBox.warning(
+                self, "ZGeo-PG", tr("Не удалось выполнить операцию") + "\n\n" + details
+            )
+        elif cancelled:
+            self._set_status(tr("Отменено"))
+        else:
+            self._set_status(tr("Готово"))
+        self._index_errors = []
+        self._index_task = None
+
+    def _refresh_index_info(self, position: int) -> None:
+        if self._db is None or position >= len(self._tables):
+            return
+        table = self._tables[position]
+        name, size = fetch_spatial_index(self._db, table)
+        self._tables[position] = replace(
+            table, spatial_index_name=name, spatial_index_size=size
+        )
+        self._refresh_table_row(position)
+        self._update_summary()
+
     # --------------------------------------------------------- connection tab
+    def _restore_connections(self) -> None:
+        """Подтянуть соединения из SQLite и заполнить форму последним из них."""
+
+        sync_connections_from_sqlite()
+        self._reload_saved_combo()
+        name = last_connection_name()
+        conn = load_connection(name) if name else None
+        if conn is None:
+            return
+        self._fill_connection_form(conn)
+        index = self._saved_combo.findText(conn.name)
+        if index >= 0:
+            self._saved_combo.setCurrentIndex(index)
+
+    def _fill_connection_form(self, conn: PGConnection) -> None:
+        self._conn_name.setText(conn.name)
+        self._conn_host.setText(conn.host)
+        self._conn_port.setValue(conn.port)
+        self._conn_db.setText(conn.database)
+        self._conn_user.setText(conn.user)
+        self._conn_password.setText(conn.password)
+
     def _reload_saved_combo(self) -> None:
         names = list_saved_connections()
         current = self._saved_combo.currentText()
@@ -655,6 +1060,8 @@ class ZGeoPgPanel(QDockWidget):
         self._saved_combo.clear()
         self._saved_combo.addItems(names)
         index = self._saved_combo.findText(current)
+        if index < 0 and self._saved_combo.count() > 0:
+            index = 0
         self._saved_combo.setCurrentIndex(index if index >= 0 else -1)
         self._saved_combo.blockSignals(False)
 
@@ -668,12 +1075,11 @@ class ZGeoPgPanel(QDockWidget):
         conn = load_connection(name)
         if conn is None:
             return
-        self._conn_name.setText(conn.name)
-        self._conn_host.setText(conn.host)
-        self._conn_port.setValue(conn.port)
-        self._conn_db.setText(conn.database)
-        self._conn_user.setText(conn.user)
-        self._conn_password.setText(conn.password)
+        self._fill_connection_form(conn)
+        # Подключаемся сразу после загрузки параметров выбранного соединения.
+        if self._db is not None:
+            self._disconnect()
+        self._on_connect()
 
     def _on_delete_saved(self) -> None:
         name = self._saved_combo.currentText()
@@ -684,11 +1090,15 @@ class ZGeoPgPanel(QDockWidget):
 
     def _on_save_connection(self) -> None:
         conn = self._current_connection_form()
-        save_connection(conn)
+        stored = save_connection(conn)
         self._reload_saved_combo()
         index = self._saved_combo.findText(conn.name)
         if index >= 0:
             self._saved_combo.setCurrentIndex(index)
+        if stored:
+            self._set_status(tr("Соединение сохранено"))
+        else:
+            self._set_status(tr("Не удалось сохранить соединение в SQLite"))
 
     def _on_test_connection(self) -> None:
         conn = self._current_connection_form()
@@ -705,6 +1115,7 @@ class ZGeoPgPanel(QDockWidget):
 
     def shutdown(self) -> None:
         self._stop_task()
+        self._stop_index_task()
         if self._conn is not None:
             try:
                 close_connection(self._conn)
@@ -715,14 +1126,20 @@ class ZGeoPgPanel(QDockWidget):
 
 
 def _cell_raw(table: SpatialTable, column: int):
-    if column == 4:
+    if column == 5:
         return table.srid
-    if column == 6:
-        return table.estimated_rows
     if column == 7:
-        return table.feature_count
+        return table.estimated_rows
     if column == 8:
-        return table.total_size
+        return table.feature_count
+    if column == 9:
+        return table.data_size
+    if column == 10:
+        return table.index_size
+    if column == 13:
+        return table.spatial_index_size
+    if column == 14:
+        return table.full_size
     return None
 
 

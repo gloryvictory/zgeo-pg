@@ -1,4 +1,4 @@
-"""Экспорт таблиц интерфейса в Excel с выбором файла."""
+"""Экспорт таблиц интерфейса в Excel и HTML с выбором файла."""
 
 from __future__ import annotations
 
@@ -6,11 +6,30 @@ from pathlib import Path
 from typing import Iterable, Optional, Sequence
 
 from qgis.PyQt.QtCore import QStandardPaths, Qt
-from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox, QTableWidget
+from qgis.PyQt.QtWidgets import QFileDialog, QMenu, QMessageBox, QTableWidget
 
 from .excel_export import CellValue, SheetSpec, write_xlsx_sheets
 from .explorer import reveal_files
+from .html_export import write_html_table
 from .i18n import tr
+
+FORMAT_XLSX = "xlsx"
+FORMAT_HTML = "html"
+
+
+def ask_export_format(parent, anchor=None) -> Optional[str]:
+    """Спросить формат экспорта: Excel или HTML."""
+
+    menu = QMenu(parent)
+    excel_action = menu.addAction(tr("Экспорт в Excel"))
+    html_action = menu.addAction(tr("Экспорт в HTML"))
+    position = anchor.mapToGlobal(anchor.rect().bottomLeft()) if anchor else None
+    chosen = menu.exec(position) if position is not None else menu.exec()
+    if chosen == excel_action:
+        return FORMAT_XLSX
+    if chosen == html_action:
+        return FORMAT_HTML
+    return None
 
 
 def export_table_with_dialog(
@@ -19,8 +38,9 @@ def export_table_with_dialog(
     default_filename: str,
     sheet_name: str,
     summary_rows: Optional[Iterable[Sequence[CellValue]]] = None,
+    export_format: str = FORMAT_XLSX,
 ) -> Optional[Path]:
-    """Предложить сохранить таблицу и записать её в .xlsx."""
+    """Предложить сохранить таблицу и записать её в .xlsx или .html."""
 
     if table.rowCount() == 0:
         return None
@@ -40,6 +60,8 @@ def export_table_with_dialog(
         rows,
         default_filename,
         sheet_name,
+        export_format=export_format,
+        total_index=len(rows) - 1 if summary_rows else None,
     )
 
 
@@ -50,36 +72,47 @@ def export_rows_with_dialog(
     default_filename: str,
     sheet_name: str,
     extra_sheets: Optional[Iterable[SheetSpec]] = None,
+    export_format: str = FORMAT_XLSX,
+    total_index: Optional[int] = None,
 ) -> Optional[Path]:
-    """Предложить сохранить строки в .xlsx и открыть проводник."""
+    """Предложить сохранить строки в выбранном формате и открыть проводник."""
 
     rows = list(rows)
     if not rows:
         return None
 
+    html = export_format == FORMAT_HTML
+    suffix = ".html" if html else ".xlsx"
     documents = QStandardPaths.writableLocation(
         QStandardPaths.StandardLocation.DocumentsLocation
     )
     start_dir = Path(documents) if documents else Path.home()
     selected, _filter = QFileDialog.getSaveFileName(
         parent,
-        tr("Экспорт в Excel"),
-        str(start_dir / default_filename),
-        "Excel (*.xlsx)",
+        tr("Экспорт в HTML") if html else tr("Экспорт в Excel"),
+        str(_with_suffix(start_dir / default_filename, suffix)),
+        "HTML (*.html)" if html else "Excel (*.xlsx)",
     )
     if not selected:
         return None
 
-    path = Path(selected)
-    if path.suffix.lower() != ".xlsx":
-        path = path.with_suffix(".xlsx")
-
-    sheets: list = [(sheet_name, headers, rows)]
-    if extra_sheets:
-        sheets.extend(list(extra_sheets))
+    path = _with_suffix(selected, suffix)
 
     try:
-        write_xlsx_sheets(path, sheets)
+        if html:
+            write_html_table(
+                path,
+                headers,
+                rows,
+                title=sheet_name,
+                total_index=total_index,
+                footer=tr("ZGeo-PG — каталог пространственных данных PostGIS"),
+            )
+        else:
+            sheets: list = [(sheet_name, headers, rows)]
+            if extra_sheets:
+                sheets.extend(list(extra_sheets))
+            write_xlsx_sheets(path, sheets)
     except Exception as error:  # noqa: BLE001
         QMessageBox.critical(
             parent,
@@ -101,6 +134,13 @@ def export_rows_with_dialog(
             ),
         )
     return path
+
+
+def _with_suffix(path, suffix: str) -> Path:
+    """Привести путь к нужному расширению."""
+
+    path = Path(path)
+    return path if path.suffix.lower() == suffix else path.with_suffix(suffix)
 
 
 def _table_rows(table: QTableWidget) -> list:

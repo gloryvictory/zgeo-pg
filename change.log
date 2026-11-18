@@ -1,0 +1,222 @@
+# Changelog
+
+All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
+Entries are written in English, newest first, and match the version in `metadata.txt`.
+
+## [0.17.0] - 2026-11-18
+
+### Added
+
+- "Indexes size" column: the size of all indexes except the spatial one.
+- "Full size" column: data size + other indexes + spatial index.
+
+### Changed
+
+- `catalog.table_sizes()` returns `pg_table_size` and `pg_indexes_size`; the
+  spatial index size is subtracted from the latter, so "Size" now means table
+  data only and nothing is counted twice.
+- The totals row, the information dialog, the statistics tab and both export
+  formats use the new columns.
+
+## [0.16.0] - 2026-11-18
+
+### Added
+
+- "Refresh all spatial indexes" button to the right of "Create all spatial
+  indexes" on the "Tables" tab; it rebuilds the spatial index of every loaded
+  table that has one.
+
+## [0.15.0] - 2026-11-18
+
+### Added
+
+- The "Export" button opens a menu with "Export to Excel" and "Export to HTML";
+  the statistics export offers the same choice.
+- `html_export.write_html_table()` writes a self-contained HTML page with
+  styled table, right-aligned numbers and a highlighted totals row.
+
+### Fixed
+
+- The exported table totals row now sums every numeric column (estimated rows,
+  exact rows, table size and spatial index size) instead of shifting values
+  into the wrong columns; the statistics export gained the same totals row.
+
+## [0.14.0] - 2026-11-18
+
+### Fixed
+
+- The "Refresh" button wiped the table list instead of reloading it: the
+  background loader opened the panel's QtSql connection and closed it when it
+  finished, so every later query failed silently. Loader and index threads now
+  use their own named QtSql connections (`open_connection(conn, tag)`,
+  `close_connection(conn, tag)`) and leave the panel connection open.
+
+## [0.13.0] - 2026-11-18
+
+### Changed
+
+- The "Create all spatial indexes" button moved into the table toolbar, right
+  after "Export", instead of a separate row above the list.
+- The "Information" button was removed from the "Statistics" tab; the dialog is
+  still available from the "Tables" tab.
+
+## [0.12.0] - 2026-11-18
+
+### Added
+
+- Status bar connection indicator: a green dot with "Connected" while a
+  connection is open and a red dot with "Not connected" otherwise.
+- Loading a saved connection from the "Connections" tab connects immediately.
+
+### Changed
+
+- The connect/disconnect button moved from the "Tables" tab to the
+  "Connections" tab, next to "Save connection" and "Test connection".
+- The saved connection combo selects the first entry when nothing was selected,
+  so the "Load" button always has something to load.
+
+## [0.11.0] - 2026-11-18
+
+### Changed
+
+- The "Create all spatial indexes" button moved from the "Statistics" tab to
+  the top of the "Tables" tab, next to the other table actions.
+
+## [0.10.0] - 2026-11-18
+
+### Changed
+
+- Tab order in the panel is "Connections", "Tables", "Statistics": the
+  connection settings come first.
+
+## [0.9.0] - 2026-11-18
+
+### Changed
+
+- Tab names: the spatial table list is "Tables" again and the connection
+  settings tab is "Connections"; the English labels are "Tables" and
+  "Connections" respectively.
+
+## [0.8.0] - 2026-11-18
+
+### Added
+
+- Connection parameters are now stored in a local SQLite database
+  (`<QGIS profile>/zgeo-pg/connections.sqlite`) in addition to the QGIS
+  settings, so host, port, database, user and password survive a restart.
+- On startup the plugin imports the saved connections from SQLite into the QGIS
+  settings and fills the connection form with the last used connection.
+- The name of the last used connection is remembered in both stores.
+
+### Fixed
+
+- Deleting a saved connection removes it from QGIS settings and from SQLite.
+
+## [0.7.0] - 2026-11-18
+
+### Added
+
+- The right-click menu of a table row with an existing spatial index gained
+  "Drop spatial index"; it asks for confirmation and removes the index for all
+  selected tables.
+- `catalog.drop_spatial_index()` and the `drop` action of the background index
+  worker.
+
+### Fixed
+
+- The statistics table and its "Spatial index" column are rebuilt after an index
+  is created, refreshed or dropped.
+
+## [0.6.0] - 2026-11-18
+
+### Added
+
+- The statistics table gained a "Spatial index" column: "Yes" when every table
+  of the schema has an index, "No" otherwise.
+- The right-click menu of a table row offers "Create spatial index" when the row
+  shows "No" and "Refresh spatial index" when it shows "Yes".
+- The statistics table shows a "Create spatial index" menu for rows without an
+  index and creates indexes for all tables of that schema.
+
+### Changed
+
+- The bulk button is now called "Create all spatial indexes" and lives at the
+  top of the "Statistics" tab.
+- Tab order is "Connections", "Connection", "Statistics".
+
+## [0.5.0] - 2026-11-18
+
+### Added
+
+- Right-click menu on the "Statistics" table with "Create spatial index" and
+  "Refresh spatial index" for every table of the selected schema.
+- "Create spatial index for all layers" button at the top of the "Statistics"
+  tab; it builds a GiST index for every loaded table that has none.
+
+### Changed
+
+- Index creation and refresh run in a background thread, report progress in the
+  status bar, log per-table errors and refresh the index columns afterwards.
+
+## [0.4.0] - 2026-11-18
+
+### Added
+
+- Table list gained a "Comment" column right after "Table", plus "Spatial index",
+  "Spatial index name" and "Spatial index size" columns at the end.
+- `catalog.fetch_spatial_index()` reports the GiST/SPGiST index built on the
+  geometry column and its size; the background loader fills it in with the
+  other characteristics.
+- The "Information" dialog shows the table comment and the spatial index
+  details.
+- The search box also matches table comments.
+
+### Fixed
+
+- The "Information" button is also available on the "Statistics" tab and now
+  explains what to do when no single table is selected.
+- The Excel export of the table list includes the new columns and keeps the
+  totals row aligned with them.
+
+## [0.3.0] - 2026-11-18
+
+### Added
+
+- `change.log` documenting every release in English.
+- The build script now leaves only the latest archive in `dist/` and installs
+  the plugin into the QGIS Desktop 4.x profile automatically.
+
+### Changed
+
+- README files describe the release workflow and the new `change.log`.
+
+## [0.2.0] - 2026-11-18
+
+### Added
+
+- Complete English translation of the interface: size units, saved connections,
+  connection parameters, selections counter, statistics captions, table
+  information dialog labels and the plugin action names.
+- The panel window title shows the current plugin version.
+
+### Fixed
+
+- Switching the language at runtime now retranslates the connection form labels,
+  the saved-connections group, its buttons, the statistics headers and the
+  chart titles instead of leaving the previous language in place.
+- Thousands separator follows the interface language (space in Russian, comma
+  in English).
+- The build archive no longer contains Genome service files (`.empryo`).
+
+### Changed
+
+- The first panel tab is now called "Connections" instead of "Tables".
+
+## [0.1.0] - 2026-11-18
+
+### Added
+
+- Initial release: connection to PostgreSQL / PostGIS, list of spatial tables
+  with geometry column, geometry type, SRID, estimated rows, exact feature
+  count and table size, background loading with cancellation, statistics by
+  size, geometry type and schema, and export of lists and tables to Excel.

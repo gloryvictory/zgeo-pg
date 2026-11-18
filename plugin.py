@@ -14,6 +14,7 @@ except ImportError:  # Qt 6 / PyQt 6
     from qgis.PyQt.QtGui import QAction
     from qgis.PyQt.QtWidgets import QToolBar
 
+from .connection import sync_connections_from_sqlite
 from .i18n import LANGUAGE_KEY, set_language, tr
 from .panel import ZGeoPgPanel
 
@@ -29,6 +30,11 @@ class ZGeoPgPlugin:
         self.iface = iface
         self._settings = QSettings()
         set_language(self._settings.value(LANGUAGE_KEY, "ru"))
+        # Параметры подключений из локальной SQLite профиля QGIS.
+        try:
+            sync_connections_from_sqlite()
+        except Exception:  # noqa: BLE001 - плагин должен загрузиться в любом случае
+            pass
         self.action: Optional[QAction] = None
         self.toolbar: Optional[QToolBar] = None
         self.panel: Optional[ZGeoPgPanel] = None
