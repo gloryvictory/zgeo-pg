@@ -3,6 +3,32 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.25.0] - 2026-11-18
+
+### Added
+
+- A state dot next to the "Connection" list of both reference data sides: green
+  when the connection is open, red when it is not, with the error text as a
+  tooltip.
+- Picking an entry in the "Connection" list connects to it right away, and
+  picking the same entry again reconnects (the `activated` signal is handled
+  along with `currentIndexChanged`).
+
+### Fixed
+
+- An open connection without readable tables used to leave an empty table list
+  with no explanation. It is reported as "Connected, but no tables are
+  available" and the dot stays green, so an empty list is no longer confused
+  with a failed connection.
+- `list_tables()` returned an empty list when its query failed; it raises with
+  the readable error and the side turns red with the reason in the status bar.
+- The sides preselect the last used connection instead of the first entry of
+  the list, and the automatic probe on list refresh no longer opens a message
+  box for a connection that cannot be opened.
+- A saved connection that lives only in the SQLite file is re-synced before it
+  is declared missing, and an unknown name now says "Connection not found:
+  <name> / Save it first" instead of failing silently.
+
 ## [0.24.0] - 2026-11-18
 
 ### Fixed

@@ -61,7 +61,7 @@ def list_tables(db) -> List[Tuple[str, str]]:
     query = QSqlQuery(db)
     tables: List[Tuple[str, str]] = []
     if not query.exec(TABLES_SQL):
-        return tables
+        raise RuntimeError(query_error(query))
     while query.next():
         schema = str(query.value(0) or "")
         name = str(query.value(1) or "")

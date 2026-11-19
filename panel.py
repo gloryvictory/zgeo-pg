@@ -50,13 +50,13 @@ from .charts import BarChart
 from .connection import (
     PGConnection,
     close_connection,
+    sync_connections_from_sqlite,
     delete_connection,
     last_connection_name,
     list_saved_connections,
     load_connection,
     open_connection,
     save_connection,
-    sync_connections_from_sqlite,
 )
 from .formatting import format_number, format_size
 from .i18n import EN_TRANSLATIONS, LANGUAGE_EN, LANGUAGE_KEY, get_language, set_language, tr
@@ -473,7 +473,10 @@ class NsiSide(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
 
         self._conn_combo = QComboBox()
+        # Выбор в списке сразу подключает к нему; activated ловит повторный
+        # выбор того же пункта, когда currentIndexChanged не срабатывает.
         self._conn_combo.currentIndexChanged.connect(self._on_connection_changed)
+        self._conn_combo.activated.connect(self._on_connection_changed)
         self._table_combo = QComboBox()
         self._table_combo.currentIndexChanged.connect(self._on_table_changed)
         self._column_combo = QComboBox()
@@ -483,13 +486,19 @@ class NsiSide(QWidget):
         self._conn_label = QLabel()
         self._table_label = QLabel()
         self._column_label = QLabel()
+        # Кружок состояния соединения: зелёный — подключено, красный — нет.
+        self._conn_dot = QLabel()
+        self._conn_dot.setFixedSize(10, 10)
+        self._conn_dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
         form.addWidget(self._conn_label, 0, 0)
         form.addWidget(self._conn_combo, 0, 1)
+        form.addWidget(self._conn_dot, 0, 2)
         form.addWidget(self._table_label, 1, 0)
-        form.addWidget(self._table_combo, 1, 1)
+        form.addWidget(self._table_combo, 1, 1, 1, 2)
         form.addWidget(self._column_label, 2, 0)
-        form.addWidget(self._column_combo, 2, 1)
+        form.addWidget(self._column_combo, 2, 1, 1, 2)
         layout.addLayout(form)
+        self._set_connected(False, tr("Не подключено"))
 
         self._list = QListWidget()
         self._list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -506,6 +515,21 @@ class NsiSide(QWidget):
         row.addWidget(self._export_button)
         layout.addLayout(row)
 
+    # -------------------------------------------------------------- состояние
+    def _set_connected(self, connected: bool, tooltip: str = "") -> None:
+        """Зелёный кружок при успешном подключении, красный — при ошибке."""
+
+        color = "#2e9e4f" if connected else "#c0392b"
+        self._conn_dot.setStyleSheet(
+            "background-color: {}; border-radius: 5px;".format(color)
+        )
+        self._conn_dot.setToolTip(tooltip or tr("Не подключено"))
+
+    def is_connected(self) -> bool:
+        """Открыто ли соединение этой стороны."""
+
+        return self._db is not None
+
     # ------------------------------------------------------------- переводы
     def retranslate(self) -> None:
         self._conn_label.setText(tr("Соединение"))
@@ -517,24 +541,44 @@ class NsiSide(QWidget):
 
     # -------------------------------------------------------------- данные
     def reload_connections(self) -> None:
-        """Заполнить список соединений: сохранённые плюс текущее подключение."""
+        """Заполнить список соединений и подключиться к рабочему из них."""
 
         names = list_saved_connections()
         live = self._host.current_connection()
         if live is not None and live.name not in names:
             names.insert(0, live.name)
-        current = self._conn_combo.currentText()
+
+        current = self._conn_combo.currentText().strip()
+        preferred = current if current in names else last_connection_name()
+        if preferred not in names:
+            preferred = names[0] if names else ""
+
         self._conn_combo.blockSignals(True)
         self._close_connection()
         self._conn_combo.clear()
         self._conn_combo.addItems(names)
-        if current in names:
-            self._conn_combo.setCurrentIndex(names.index(current))
         self._conn_combo.blockSignals(False)
-        self._on_connection_changed()
 
-    def _on_connection_changed(self, *_args) -> None:
-        """Открыть выбранное соединение и заполнить список таблиц."""
+        # Пробуем предпочтительное соединение, затем остальные: сторона
+        # должна открываться на рабочей базе, а не на первом пункте списка.
+        for name in ([preferred] if preferred else []) + [
+            name for name in names if name != preferred
+        ]:
+            self._conn_combo.blockSignals(True)
+            self._conn_combo.setCurrentIndex(names.index(name))
+            self._conn_combo.blockSignals(False)
+            # Автоподключение не показывает модальных окон: ошибка видна по
+            # красному кружку и в статусной строке.
+            self._on_connection_changed(silent=True)
+            if self.is_connected():
+                return
+
+    def _on_connection_changed(self, *_args, silent: bool = False) -> None:
+        """Открыть выбранное соединение и заполнить список таблиц.
+
+        silent подавляет модальные сообщения: так соединение пробуется
+        автоматически при заполнении списка соединений.
+        """
 
         self._close_connection()
         self._table_combo.clear()
@@ -542,29 +586,43 @@ class NsiSide(QWidget):
         self._set_values([])
         name = self._conn_combo.currentText().strip()
         if not name:
+            self._set_connected(False, tr("Соединение не выбрано"))
             return
         live = self._host.current_connection()
         conn = live if live is not None and live.name == name else load_connection(name)
         if conn is None:
-            self._host.report_error(tr("Соединение не найдено") + ": " + name)
+            # Соединение могло остаться только в SQLite: подтягиваем оттуда
+            # и пробуем ещё раз, прежде чем сообщать об ошибке.
+            sync_connections_from_sqlite()
+            conn = load_connection(name)
+        if conn is None:
+            message = tr("Соединение не найдено") + ": " + name
+            self._set_connected(False, message)
+            self._host.report_error(message)
+            if not silent:
+                QMessageBox.warning(
+                    self, "ZGeo-PG", message + "\n" + tr("Сохраните его")
+                )
             return
         try:
             db = open_connection(conn, self._tag)
             tables = list_tables(db)
         except Exception as error:  # noqa: BLE001
             self._close_connection()
-            self._host.report_error(str(error))
-            QMessageBox.critical(
-                self, "ZGeo-PG", tr("Ошибка подключения") + ":\n" + str(error)
-            )
+            message = str(error)
+            self._set_connected(False, message)
+            self._host.report_error(message)
+            if not silent:
+                QMessageBox.critical(
+                    self, "ZGeo-PG", tr("Ошибка подключения") + ":\n" + message
+                )
             return
         self._db = db
         self._conn = conn
+        self._set_connected(True, conn.qualified + " / " + name)
         for schema, table in tables:
             self._table_combo.addItem(schema + "." + table, (schema, table))
-        self._host.show_status(
-            tr("Подключено") + ": " + name + " (" + str(len(tables)) + ")"
-        )
+        self._host.show_connected(name, len(tables))
 
     def _on_table_changed(self, *_args) -> None:
         self._column_combo.clear()
@@ -664,7 +722,7 @@ class NsiTabPage(QWidget):
         super().__init__()
         self._host = host
         self._comparison = NsiComparison()
-        self._status_text = ""
+        self._status_kind: Tuple[str, ...] = ()
         self._status_error = ""
         self._build()
 
@@ -744,7 +802,7 @@ class NsiTabPage(QWidget):
                 self, "ZGeo-PG", tr("Загрузите значения с обеих сторон")
             )
             return
-        self._status_text = ""
+        self._status_kind = ()
         self._status_error = ""
         self._comparison = compare_values(left, right)
         self._populate_stats()
@@ -780,10 +838,25 @@ class NsiTabPage(QWidget):
         self._stats_table.horizontalHeader().setStretchLastSection(True)
 
     def _render_status(self) -> None:
+        """Показать состояние вкладки на текущем языке."""
+
         if self._status_error:
             self._status_label.setText(
                 tr("Ошибка") + ": " + readable_error(self._status_error)
             )
+            return
+        kind = self._status_kind
+        if kind:
+            label = kind[0]
+            if label == "connected":
+                text = tr("Подключено") + ": {} ({})".format(kind[1], kind[2])
+            elif label == "empty":
+                text = tr("Подключено, но доступных таблиц нет") + ": " + kind[1]
+            elif label == "none":
+                text = tr("Соединение не выбрано")
+            else:
+                text = kind[1]
+            self._status_label.setText(text)
             return
         total = self._comparison.total
         if not total:
@@ -852,7 +925,7 @@ class NsiTabPage(QWidget):
         """Показать ошибку и в строке вкладки, и в статусной строке панели."""
 
         self._status_error = message
-        self._status_text = ""
+        self._status_kind = ()
         text = tr("Ошибка") + ": " + readable_error(message)
         self._status_label.setText(text)
         self._host.show_status(text)
@@ -863,9 +936,28 @@ class NsiTabPage(QWidget):
         return self._host.current_connection()
 
     def show_status(self, text: str) -> None:
-        """Показать сообщение в статусной строке панели."""
+        """Показать произвольное сообщение в статусной строке панели."""
 
+        self._status_error = ""
+        self._status_kind = ("text", text)
+        self._status_label.setText(text)
         self._host.show_status(text)
+
+    def show_connected(self, name: str, count: int) -> None:
+        """Отметить успешное подключение стороны с числом таблиц."""
+
+        kind = ("connected", name, count) if count else ("empty", name)
+        self._status_error = ""
+        self._status_kind = kind
+        self._render_status()
+        if count:
+            self._host.show_status(
+                tr("Подключено") + ": {} ({})".format(name, count)
+            )
+        else:
+            self._host.show_status(
+                tr("Подключено, но доступных таблиц нет") + ": " + name
+            )
 
     def reload_connections(self) -> None:
         self._left.reload_connections()
@@ -903,6 +995,8 @@ class ZGeoPgPanel(QDockWidget):
         self._build_connection_tab()
         self._build_tables_tab()
         self._build_stats_tab()
+        self._nsi_page = NsiTabPage(self)
+        self._tabs.addTab(self._nsi_page, tr("Качество по НСИ"))
         self._add_quality_page(
             QUALITY_CHECKS,
             QualityTask,
@@ -915,8 +1009,6 @@ class ZGeoPgPanel(QDockWidget):
             "Качество атрибутивных данных",
             "zgeo-pg_attributes",
         )
-        self._nsi_page = NsiTabPage(self)
-        self._tabs.addTab(self._nsi_page, tr("Качество по НСИ"))
         self._retranslate()
         self._restore_connections()
 
