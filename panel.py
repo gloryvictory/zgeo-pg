@@ -696,7 +696,11 @@ class ZGeoPgPanel(QDockWidget):
             )
         rows.append(self._totals_row(visible))
 
-        default_name = "zgeo-pg_tables.html" if export_format == FORMAT_HTML else "zgeo-pg_tables.xlsx"
+        default_name = (
+            "zgeo-pg_tables.html"
+            if export_format == FORMAT_HTML
+            else "zgeo-pg_tables.xlsx"
+        )
         export_rows_with_dialog(
             self,
             headers,
@@ -705,6 +709,7 @@ class ZGeoPgPanel(QDockWidget):
             tr("Таблицы"),
             export_format=export_format,
             total_index=len(rows) - 1,
+            size_columns=(9, 10, 13, 14),
         )
 
     def _totals_row(self, visible: List[SpatialTable]) -> List[object]:
@@ -769,6 +774,7 @@ class ZGeoPgPanel(QDockWidget):
             tr("Статистика по схемам"),
             summary_rows=[[tr("Итого"), count_total, size_total, ""]],
             export_format=export_format,
+            size_columns=(2,),
         )
 
     # -------------------------------------------------------------- stats tab

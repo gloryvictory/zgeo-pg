@@ -1,7 +1,8 @@
 param(
     [string]$OutputDirectory,
     [string[]]$QGISPluginDirectories,
-    [switch]$SkipQGISInstall
+    [switch]$SkipQGISInstall,
+    [switch]$NoRestart
 )
 
 # Profile plugins directories used by QGIS Desktop 4.x (4.2.3 on this machine).
@@ -16,6 +17,66 @@ function Get-DefaultQGISPluginDirectories {
             Join-Path $_.FullName "python\plugins"
         } | Where-Object { Test-Path -LiteralPath $_ }
     )
+}
+
+# QGIS keeps plugin modules in memory: the plugin directory must be free before
+# it is replaced, so the application is closed first and reopened afterwards.
+function Stop-RunningQGIS {
+    $processes = @(Get-Process -Name "qgis*" -ErrorAction SilentlyContinue |
+        Where-Object { $_.MainWindowHandle -ne 0 -or $_.ProcessName -like "qgis*bin*" })
+    if (-not $processes) {
+        return @()
+    }
+
+    # Remember the executable path before the processes disappear, so QGIS can
+    # be started again afterwards.
+    $executables = @()
+    foreach ($process in $processes) {
+        try {
+            $executables += $process.MainModule.FileName
+        }
+        catch {
+            Write-Verbose "Cannot resolve executable of $($process.ProcessName)"
+        }
+    }
+
+    Write-Host "Closing QGIS: $($processes.ProcessName -join ', ')"
+    foreach ($process in $processes) {
+        $null = $process.CloseMainWindow()
+    }
+
+    # QGIS may show a "quit?" prompt, so a graceful close is given a few
+    # seconds and then the process is terminated: the plugin directory has to be
+    # free before it can be replaced.
+    $deadline = (Get-Date).AddSeconds(10)
+    while ((Get-Date) -lt $deadline) {
+        $alive = @($processes | Where-Object { -not $_.HasExited })
+        if (-not $alive) {
+            break
+        }
+        Start-Sleep -Milliseconds 500
+    }
+
+    foreach ($process in $processes) {
+        if (-not $process.HasExited) {
+            Write-Warning "QGIS did not close by itself; terminating $($process.ProcessName)."
+            $process.Kill()
+            $null = $process.WaitForExit(15000)
+        }
+    }
+
+    return $executables
+}
+
+function Start-QGISAgain {
+    param([string[]]$Executables)
+
+    foreach ($path in $Executables) {
+        if ($path -and (Test-Path -LiteralPath $path)) {
+            Start-Process -FilePath $path | Out-Null
+            Write-Host "Started: $path"
+        }
+    }
 }
 
 $ErrorActionPreference = "Stop"
@@ -116,13 +177,21 @@ try {
             Write-Warning "No QGIS profile plugins directory found; skipping install."
         }
 
+        $closed = Stop-RunningQGIS
+
         foreach ($pluginsDirectory in $targets) {
             $target = Join-Path $pluginsDirectory $pluginName
             if (Test-Path -LiteralPath $target) {
                 Remove-Item -LiteralPath $target -Recurse -Force
             }
             Copy-Item -LiteralPath $stagingPlugin -Destination $target -Recurse -Force
+            Get-ChildItem -LiteralPath $target -Recurse -Directory -Filter "__pycache__" -ErrorAction SilentlyContinue |
+                Remove-Item -Recurse -Force
             Write-Host "Installed: $target (version $version)"
+        }
+
+        if ($closed.Count -gt 0 -and -not $NoRestart) {
+            Start-QGISAgain -Executables $closed
         }
     }
 

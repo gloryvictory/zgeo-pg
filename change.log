@@ -3,6 +3,24 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.18.0] - 2026-11-18
+
+### Changed
+
+- Export writes every size as a human-readable string ("80 KB", "1.5 GB"):
+  `export_rows_with_dialog()` accepts a `size_columns` argument and converts
+  those cells from bytes with `format_size()`; the tables and statistics
+  exports pass their size columns, so Excel and HTML now show the same values
+  as the interface.
+- HTML cells that start with a digit are right-aligned, so the converted sizes
+  keep the numeric column alignment.
+
+### Fixed
+
+- `scripts/build_zip.ps1` closes QGIS Desktop before replacing the plugin
+  directory (QGIS locks its Python modules) and starts it again afterwards.
+  The new `-NoRestart` switch keeps QGIS closed.
+
 ## [0.17.0] - 2026-11-18
 
 ### Added

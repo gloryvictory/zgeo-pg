@@ -10,6 +10,7 @@ from qgis.PyQt.QtWidgets import QFileDialog, QMenu, QMessageBox, QTableWidget
 
 from .excel_export import CellValue, SheetSpec, write_xlsx_sheets
 from .explorer import reveal_files
+from .formatting import format_size
 from .html_export import write_html_table
 from .i18n import tr
 
@@ -39,6 +40,7 @@ def export_table_with_dialog(
     sheet_name: str,
     summary_rows: Optional[Iterable[Sequence[CellValue]]] = None,
     export_format: str = FORMAT_XLSX,
+    size_columns: Optional[Sequence[int]] = None,
 ) -> Optional[Path]:
     """Предложить сохранить таблицу и записать её в .xlsx или .html."""
 
@@ -62,6 +64,7 @@ def export_table_with_dialog(
         sheet_name,
         export_format=export_format,
         total_index=len(rows) - 1 if summary_rows else None,
+        size_columns=size_columns,
     )
 
 
@@ -74,12 +77,19 @@ def export_rows_with_dialog(
     extra_sheets: Optional[Iterable[SheetSpec]] = None,
     export_format: str = FORMAT_XLSX,
     total_index: Optional[int] = None,
+    size_columns: Optional[Sequence[int]] = None,
 ) -> Optional[Path]:
-    """Предложить сохранить строки в выбранном формате и открыть проводник."""
+    """Предложить сохранить строки в выбранном формате и открыть проводник.
+
+    Аргумент size_columns перечисляет столбцы с размерами в байтах: перед
+    записью их значения приводятся к читаемому виду (80 КБ, 1.5 ГБ).
+    """
 
     rows = list(rows)
     if not rows:
         return None
+    if size_columns:
+        rows = [_humanize_sizes(row, size_columns) for row in rows]
 
     html = export_format == FORMAT_HTML
     suffix = ".html" if html else ".xlsx"
@@ -134,6 +144,19 @@ def export_rows_with_dialog(
             ),
         )
     return path
+
+
+def _humanize_sizes(row: Sequence[CellValue], size_columns: Sequence[int]) -> list:
+    """Заменить размеры в байтах на читаемые строки."""
+
+    values = list(row)
+    for column in size_columns:
+        if column >= len(values):
+            continue
+        value = values[column]
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            values[column] = format_size(int(value))
+    return values
 
 
 def _with_suffix(path, suffix: str) -> Path:

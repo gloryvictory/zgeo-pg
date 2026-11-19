@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import re
 from html import escape
 from pathlib import Path
 from typing import Optional, Sequence
@@ -80,6 +81,9 @@ p.footer {{
 """
 
 
+_SIZE_RE = re.compile(r"^[\d\s\u00a0.,]+(?:Б|КБ|МБ|ГБ|ТБ|B|KB|MB|GB|TB)$")
+
+
 def _format_cell(value) -> tuple:
     """Вернуть (текст, признак числовой ячейки)."""
 
@@ -89,7 +93,9 @@ def _format_cell(value) -> tuple:
         return ("1" if value else "0"), True
     if isinstance(value, (int, float)):
         return format_number(value), True
-    return str(value), False
+    text = str(value)
+    # Человеко-читаемые размеры («80 КБ», «1.5 ГБ») выравниваем как числа.
+    return text, bool(_SIZE_RE.match(text.strip()))
 
 
 def _row_html(

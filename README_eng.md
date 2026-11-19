@@ -4,7 +4,7 @@
 
 QGIS plugin for viewing spatial data stored in a PostgreSQL / PostGIS database.
 
-Plugin version: **0.17.0**  
+Plugin version: **0.18.0**  
 Release history: [change.log](change.log)
 
 The plugin adds a **"ZGeo-PG"** toolbar panel in QGIS with a **"ZGeo-PG Catalog"** button that opens a floating panel. In the panel:
@@ -19,7 +19,8 @@ The plugin adds a **"ZGeo-PG"** toolbar panel in QGIS with a **"ZGeo-PG Catalog"
 - row count and table size values are loaded in the background with the ability to interrupt; the loader uses its own connection, so the "Refresh" button reloads the list without reconnecting;
 - above the list there is a filter by table name and schema selection; there is a "Only with geometry" filter;
 - the "Information" button on the "Tables" tab opens a dialog with full details of the selected table, including its comment and spatial index;
-- the "Export" button offers "Export to Excel" or "Export to HTML"; both formats include a totals row that sums every numeric column (estimated rows, exact feature count, table size, spatial index size);
+- save your QGIS project before running the build: the script closes the editor and, if it has not exited within 10 seconds, terminates the process;
+- the "Export" button offers "Export to Excel" or "Export to HTML"; both formats include a totals row that sums every numeric column (estimated rows, exact feature count, data size, indexes size, spatial index size, full size), and every size is written in human-readable form — KB, MB, GB, TB;
 - on the **"Statistics"** tab, charts are displayed by table size and geometry type, as well as a statistics table by schema;
 - statistics can also be exported to Excel or HTML, also with a totals row;
 - the "Create all spatial indexes" button in the "Tables" toolbar (right after "Export") builds GiST indexes for all tables that have none, and "Refresh all spatial indexes" to its right rebuilds every existing one;
@@ -65,7 +66,7 @@ Workflow for every task:
 1. bump the version in `metadata.txt` and prepend a line to its `changelog`;
 2. fill `change.log` in English (new section on top);
 3. update `README.md` and `README_eng.md`;
-4. build and install with `scripts\build_zip.ps1` — only the latest archive stays in `dist`, and that version is installed into the QGIS 4.x profile;
+4. build and install with `scripts\build_zip.ps1` — only the latest archive stays in `dist`, and that version is installed into the QGIS 4.x profile (the script closes and reopens QGIS itself);
 5. commit.
 
 ## Installation in QGIS
@@ -78,7 +79,7 @@ Build the archive:
 powershell -ExecutionPolicy Bypass -File .\scripts\build_zip.ps1
 ```
 
-The ready file will appear in `dist\zgeo-pg-0.17.0.zip`. Only the latest build is kept in `dist`. The script also installs the build into the QGIS Desktop 4.x profile (`%APPDATA%\QGIS\QGIS4\profiles\<profile>\python\plugins\zgeo-pg`); pass `-SkipQGISInstall` to only build the archive.
+The ready file will appear in `dist\zgeo-pg-0.18.0.zip`. Only the latest build is kept in `dist`. The script first closes a running QGIS Desktop (it keeps the plugin files locked, so the copy fails otherwise), installs the build into the QGIS Desktop 4.x profile (`%APPDATA%\QGIS\QGIS4\profiles\<profile>\python\plugins\zgeo-pg`) and starts QGIS again. Pass `-SkipQGISInstall` to only build the archive, and `-NoRestart` to leave QGIS closed.
 
 Or install it manually. In QGIS open:
 
@@ -108,7 +109,7 @@ After updating the plugin, close QGIS completely and restart. If the **"ZGeo-PG"
 5. After connecting, the **"Tables"** tab will show a list of all spatial tables. The coordinate system, row count and table size are loaded automatically in the background.
 6. Use filters to search for tables by name or select a specific schema.
 7. Select a table and click the **"Information"** button to view detailed information.
-8. Click **"Export"** to export the list of tables to Excel.
+8. Click **"Export"** to export the list of tables to Excel or HTML; sizes in the file are written as KB/MB/GB.
 9. Open the **"Statistics"** tab to view charts and statistics by schema.
 
 The last selected connection is remembered and used as the starting point for the next launch.
