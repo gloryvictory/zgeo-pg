@@ -3,6 +3,30 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.23.0] - 2026-11-18
+
+### Fixed
+
+- Switching to a second connection on the "Reference data quality" tab closed
+  the previous QtSql handle while it was still referenced, so Qt reported
+  "connection is still in use" and every query of that side stopped working.
+  `close_connection()` and `NsiSide._close_connection()` now drop the
+  references before `removeDatabase()`.
+- The connection lists of both sides show the connection the panel is using
+  even when it was never saved, and they refresh on connect, disconnect, save
+  and delete, so the second side can always be activated.
+- A connection that cannot be opened reports the error in the status bar and
+  in a message box and leaves the side usable instead of failing later with an
+  empty table list.
+
+### Changed
+
+- `NsiSide` keeps its QtSql tag in `self._tag`, verifies `load_connection()`
+  instead of silently ignoring a missing record, and shows
+  "Connected: <name> (N)" after a successful switch.
+- The frame of the tab surfaces the status of both sides through
+  `show_status()` and `current_connection()` on the panel.
+
 ## [0.22.0] - 2026-11-18
 
 ### Added

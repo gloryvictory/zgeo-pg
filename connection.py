@@ -363,12 +363,21 @@ def open_connection(conn: PGConnection, tag: Optional[str] = None) -> QSqlDataba
 
 
 def close_connection(conn: PGConnection, tag: Optional[str] = None) -> None:
-    """Закрыть и удалить соединение QtSql (или соединение потока с тегом)."""
+    """Закрыть и удалить соединение QtSql (или соединение потока с тегом).
+
+    Ссылка на QSqlDatabase удаляется до removeDatabase: пока объект жив, Qt
+    предупреждает «connection is still in use» и обрывает все запросы этого
+    соединения, из-за чего вкладка НСИ падала при переключении подключения.
+    """
+
     db_name = _connection_name(conn, tag)
-    if QSqlDatabase.contains(db_name):
-        db = QSqlDatabase.database(db_name, open=False)
+    if not QSqlDatabase.contains(db_name):
+        return
+    db = QSqlDatabase.database(db_name, open=False)
+    if db.isOpen():
         db.close()
-        QSqlDatabase.removeDatabase(db_name)
+    del db
+    QSqlDatabase.removeDatabase(db_name)
 
 
 def _exec(db, query: str):

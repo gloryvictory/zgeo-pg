@@ -606,6 +606,10 @@ EN_TRANSLATIONS = {
         "Total unique values compared: {}"
     ),
     "Сравнение не выполнялось": "No comparison has been run",
+    "Соединение не найдено": "Connection not found",
+    "Дождитесь окончания текущих проверок": (
+        "Wait until the running checks finish"
+    ),
     "Загрузите значения с обеих сторон": (
         "Load values on both sides first"
     ),

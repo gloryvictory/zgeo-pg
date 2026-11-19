@@ -461,6 +461,7 @@ class NsiSide(QWidget):
         super().__init__()
         self._host = host
         self._side = side
+        self._tag = "nsi_" + side
         self._db = None
         self._conn = None
         self._values: List[str] = []
@@ -515,39 +516,54 @@ class NsiSide(QWidget):
 
     # -------------------------------------------------------------- данные
     def reload_connections(self) -> None:
-        """Заполнить список сохранённых соединений."""
+        """Заполнить список соединений: сохранённые плюс текущее подключение."""
 
         names = list_saved_connections()
+        live = self._host.current_connection()
+        if live is not None and live.name not in names:
+            names.insert(0, live.name)
         current = self._conn_combo.currentText()
         self._conn_combo.blockSignals(True)
+        self._close_connection()
         self._conn_combo.clear()
         self._conn_combo.addItems(names)
         if current in names:
-            self._conn_combo.setCurrentText(current)
+            self._conn_combo.setCurrentIndex(names.index(current))
         self._conn_combo.blockSignals(False)
-        if names:
-            self._on_connection_changed()
+        self._on_connection_changed()
 
     def _on_connection_changed(self, *_args) -> None:
-        name = self._conn_combo.currentText().strip()
+        """Открыть выбранное соединение и заполнить список таблиц."""
+
         self._close_connection()
         self._table_combo.clear()
         self._column_combo.clear()
         self._set_values([])
+        name = self._conn_combo.currentText().strip()
         if not name:
             return
-        conn = load_connection(name)
+        live = self._host.current_connection()
+        conn = live if live is not None and live.name == name else load_connection(name)
         if conn is None:
+            self._host.report_error(tr("Соединение не найдено") + ": " + name)
             return
         try:
-            self._db = open_connection(conn, "nsi_" + self._side)
+            db = open_connection(conn, self._tag)
+            tables = list_tables(db)
         except Exception as error:  # noqa: BLE001
-            self._db = None
+            self._close_connection()
             self._host.report_error(str(error))
+            QMessageBox.critical(
+                self, "ZGeo-PG", tr("Ошибка подключения") + ":\n" + str(error)
+            )
             return
+        self._db = db
         self._conn = conn
-        for schema, table in list_tables(self._db):
+        for schema, table in tables:
             self._table_combo.addItem(schema + "." + table, (schema, table))
+        self._host.show_status(
+            tr("Подключено") + ": " + name + " (" + str(len(tables)) + ")"
+        )
 
     def _on_table_changed(self, *_args) -> None:
         self._column_combo.clear()
@@ -600,13 +616,22 @@ class NsiSide(QWidget):
         return "{}.{}.{}".format(target[0], target[1], column)
 
     def _close_connection(self) -> None:
-        if self._conn is not None:
-            try:
-                close_connection(self._conn, "nsi_" + self._side)
-            except RuntimeError:
-                pass
-            self._conn = None
-            self._db = None
+        """Закрыть соединение стороны, сначала отпустив ссылку на базу.
+
+        Qt сообщает «connection is still in use» и обрывает запросы, если
+        removeDatabase вызвать, пока объект QSqlDatabase ещё жив, поэтому
+        ссылка снимается до закрытия.
+        """
+
+        conn = self._conn
+        self._conn = None
+        self._db = None
+        if conn is None:
+            return
+        try:
+            close_connection(conn, self._tag)
+        except RuntimeError:
+            pass
 
     def shutdown(self) -> None:
         """Закрыть соединение стороны при выгрузке плагина."""
@@ -638,6 +663,7 @@ class NsiTabPage(QWidget):
         super().__init__()
         self._host = host
         self._comparison = NsiComparison()
+        self._status_text = ""
         self._build()
 
     def _build(self) -> None:
@@ -716,6 +742,7 @@ class NsiTabPage(QWidget):
                 self, "ZGeo-PG", tr("Загрузите значения с обеих сторон")
             )
             return
+        self._status_text = ""
         self._comparison = compare_values(left, right)
         self._populate_stats()
         self._export_button.setEnabled(True)
@@ -750,6 +777,9 @@ class NsiTabPage(QWidget):
         self._stats_table.horizontalHeader().setStretchLastSection(True)
 
     def _render_status(self) -> None:
+        if self._status_text:
+            self._status_label.setText(self._status_text)
+            return
         total = self._comparison.total
         if not total:
             self._status_label.setText(tr("Сравнение не выполнялось"))
@@ -814,7 +844,22 @@ class NsiTabPage(QWidget):
 
     # -------------------------------------------------------------- сервис
     def report_error(self, message: str) -> None:
-        self._host._set_status(tr("Ошибка") + ": " + message)
+        """Показать ошибку и в строке вкладки, и в статусной строке панели."""
+
+        text = tr("Ошибка") + ": " + message
+        self._status_text = text
+        self._status_label.setText(text)
+        self._host.show_status(text)
+
+    def current_connection(self) -> Optional[PGConnection]:
+        """Текущее подключение панели для выбора на стороне сверки."""
+
+        return self._host.current_connection()
+
+    def show_status(self, text: str) -> None:
+        """Показать сообщение в статусной строке панели."""
+
+        self._host.show_status(text)
 
     def reload_connections(self) -> None:
         self._left.reload_connections()
@@ -1013,6 +1058,11 @@ class ZGeoPgPanel(QDockWidget):
         self._stats_page = page
         self._tabs.addTab(page, tr("Статистика"))
 
+    def current_connection(self) -> Optional[PGConnection]:
+        """Текущее подключение панели: его же можно выбрать на вкладке НСИ."""
+
+        return self._conn
+
     def _add_quality_page(self, checks, task_class, title_source: str, prefix: str) -> None:
         """Добавить вкладку проверок качества с полным набором средств."""
 
@@ -1122,6 +1172,11 @@ class ZGeoPgPanel(QDockWidget):
     def _set_status(self, text: str) -> None:
         self._status_label.setText(text)
 
+    def show_status(self, text: str) -> None:
+        """Открытый метод статусной строки для вложенных вкладок."""
+
+        self._set_status(text)
+
     def _update_connection_state(self) -> None:
         """Зелёный кружок и «Подключено», если соединение открыто."""
 
@@ -1221,6 +1276,7 @@ class ZGeoPgPanel(QDockWidget):
             self._update_connection_state()
             QMessageBox.critical(self, "ZGeo-PG", tr("Ошибка подключения") + ":\n" + str(error))
             return
+        self._nsi_page.reload_connections()
         self._retranslate()
         self._update_connection_state()
         self._reload_tables()
@@ -1242,6 +1298,7 @@ class ZGeoPgPanel(QDockWidget):
         self._export_button.setEnabled(False)
         self._create_all_indexes_button.setEnabled(False)
         self._refresh_all_indexes_button.setEnabled(False)
+        self._nsi_page.reload_connections()
         self._retranslate()
         self._update_connection_state()
         self._set_status(tr("Готово"))
@@ -1870,6 +1927,7 @@ class ZGeoPgPanel(QDockWidget):
 
         sync_connections_from_sqlite()
         self._reload_saved_combo()
+        self._nsi_page.reload_connections()
         name = last_connection_name()
         conn = load_connection(name) if name else None
         if conn is None:
@@ -1878,7 +1936,6 @@ class ZGeoPgPanel(QDockWidget):
         index = self._saved_combo.findText(conn.name)
         if index >= 0:
             self._saved_combo.setCurrentIndex(index)
-        self._nsi_page.reload_connections()
 
     def _fill_connection_form(self, conn: PGConnection) -> None:
         self._conn_name.setText(conn.name)
