@@ -177,6 +177,224 @@ EN_TRANSLATIONS = {
     "Столбец геометрии": "Geometry column",
     "Геометрия / география": "Geometry / geography",
 
+    # Качество пространственных данных
+    "Качество пространственных данных": "Geospatial data quality",
+    "Проверки": "Checks",
+    "Проверить": "Run checks",
+    "Прервать": "Abort",
+    "Прерывание": "Stopping",
+    "Описание проверки": "Check description",
+    "Как исправить": "How to fix",
+    "Текущая проверка": "Current check",
+    "Подготовка проверок": "Preparing checks",
+    "Проверка качества данных": "Data quality check",
+    "Проверка прервана": "Check aborted",
+    "Найдено проблем: {}": "Problems found: {}",
+    "ошибок запросов: {}": "failed queries: {}",
+    "Не применимо": "Not applicable",
+    "Ошибка запроса": "Query failed",
+    "Сначала подключитесь к базе данных": "Connect to a database first",
+    "Список таблиц пуст — нажмите «Обновить»": (
+        "The table list is empty — click \"Refresh\""
+    ),
+    "Отметьте хотя бы одну проверку": "Select at least one check",
+    "Невалидная геометрия": "Invalid geometry",
+    "ST_IsValid возвращает false: геометрию нельзя корректно обработать.": (
+        "ST_IsValid returns false: the geometry cannot be processed correctly."
+    ),
+    "Проверка ищет объекты, геометрия которых нарушает правила OGC Simple "
+    "Features: самопересечения, дыры вне оболочки, незамкнутые кольца, "
+    "аномалии вершин. Используется ST_IsValid, а количество таких объектов "
+    "показывается в результатах. Невалидная геометрия ломает буферизацию, "
+    "наложение, обрезку и экспорт в другие форматы, а часть операций PostGIS "
+    "завершается ошибкой GEOS на всей таблице.": (
+        "The check looks for features whose geometry violates the OGC Simple "
+        "Features rules: self-intersections, holes outside the shell, unclosed "
+        "rings, vertex anomalies. ST_IsValid is used and the number of such "
+        "features is shown in the results. Invalid geometry breaks buffering, "
+        "overlay, clipping and export to other formats, and some PostGIS "
+        "operations fail with a GEOS error for the whole table."
+    ),
+    "Исправить геометрию запросом UPDATE ... SET geom = ST_MakeValid(geom) "
+    "или найти объекты и отредактировать их вручную. Причину невалидности "
+    "показывает ST_IsValidReason.": (
+        "Repair the geometry with UPDATE ... SET geom = ST_MakeValid(geom) or "
+        "find the features and edit them manually. ST_IsValidReason shows the "
+        "cause of the invalidity."
+    ),
+    "Пустая или отсутствующая геометрия": "Empty or missing geometry",
+    "Геометрия NULL или ST_IsEmpty: у объекта нет координат.": (
+        "Geometry is NULL or ST_IsEmpty: the feature has no coordinates."
+    ),
+    "Проверка считает строки, в которых геометрический столбец пуст (NULL) "
+    "или содержит геометрию без координат (ST_IsEmpty). Такие объекты "
+    "попадают в статистику и выгрузки, но не отображаются на карте, а часть "
+    "пространственных операций возвращает для них NULL.": (
+        "The check counts rows whose geometry column is empty (NULL) or holds a "
+        "geometry without coordinates (ST_IsEmpty). Such features appear in "
+        "statistics and exports but are not drawn on the map, and some spatial "
+        "operations return NULL for them."
+    ),
+    "Удалить пустые строки или заполнить геометрию: DELETE FROM ... "
+    "WHERE geom IS NULL OR ST_IsEmpty(geom).": (
+        "Delete the empty rows or fill in the geometry: DELETE FROM ... "
+        "WHERE geom IS NULL OR ST_IsEmpty(geom)."
+    ),
+    "Дублирующиеся геометрии": "Duplicate geometries",
+    "Несколько объектов имеют одну и ту же геометрию.": (
+        "Several features share the same geometry."
+    ),
+    "Проверка группирует объекты по геометрии и считает лишние копии, то "
+    "есть суммарное число объектов сверх одного в каждой группе. Дубликаты "
+    "завышают статистику, дают двойную подпись объектов и мешают объединению "
+    "слоёв из разных источников.": (
+        "The check groups features by geometry and counts the extra copies, that "
+        "is the number of features beyond one in every group. Duplicates "
+        "inflate statistics, double the labels and get in the way when layers "
+        "from different sources are merged."
+    ),
+    "Найти повторы запросом SELECT ST_AsEWKB(geom), count(*) ... GROUP BY 1 "
+    "HAVING count(*) > 1, затем удалить лишние строки или объединить их "
+    "атрибуты.": (
+        "Find the repeats with SELECT ST_AsEWKB(geom), count(*) ... GROUP BY 1 "
+        "HAVING count(*) > 1, then delete the extra rows or merge their "
+        "attributes."
+    ),
+    "Самопересечения": "Self-intersections",
+    "Причина невалидности — самопересечение контура.": (
+        "The cause of the invalidity is a self-intersecting ring."
+    ),
+    "Подмножество проверки валидности: объекты, у которых ST_IsValidReason "
+    "начинается с Self-intersection. Это полигоны, контур которых заходит "
+    "сам в себя, и линии, проходящие через собственную точку. Такие объекты "
+    "нельзя использовать в наложениях, топологических операциях и расчёте "
+    "площадей.": (
+        "A subset of the validity check: features whose ST_IsValidReason starts "
+        "with Self-intersection. These are polygons whose ring crosses itself "
+        "and lines passing through their own point. Such features cannot be "
+        "used in overlays, topology operations or area calculations."
+    ),
+    "Исправить через ST_MakeValid или вручную: удалить лишние вершины и "
+    "разорвать контур на отдельные части.": (
+        "Repair with ST_MakeValid or manually: remove the extra vertices and "
+        "split the ring into separate parts."
+    ),
+    "Смешанные типы геометрии": "Mixed geometry types",
+    "Тип объекта не совпадает с типом геометрии таблицы.": (
+        "The feature type does not match the geometry type of the table."
+    ),
+    "Проверка сравнивает GeometryType(geom) с типом, объявленным для "
+    "таблицы в geometry_columns. Смешанные типы появляются при загрузке без "
+    "ограничения типа и ломают оформление, легенду и выгрузку в Shapefile "
+    "или GeoPackage. Для таблиц с типом GEOMETRY проверка не выполняется.": (
+        "The check compares GeometryType(geom) with the type declared for the "
+        "table in geometry_columns. Mixed types come from loading data without "
+        "a type constraint and break styling, the legend and export to "
+        "Shapefile or GeoPackage. The check is skipped for GEOMETRY tables."
+    ),
+    "Привести объекты к одному типу функциями ST_Multi и "
+    "ST_CollectionExtract или вынести объекты другого типа в отдельную "
+    "таблицу.": (
+        "Bring the features to one type with ST_Multi and ST_CollectionExtract "
+        "or move the features of the other type into a separate table."
+    ),
+    "Неверный SRID объектов": "Wrong feature SRID",
+    "SRID объекта отличается от SRID таблицы.": (
+        "The feature SRID differs from the table SRID."
+    ),
+    "Проверка считает объекты, у которых ST_SRID(geom) отличается от SRID, "
+    "объявленного для таблицы. Обычно это результат вставки геометрии без "
+    "SRID (0) или загрузки данных в другой системе координат: такие объекты "
+    "отображаются не на своём месте и портят расчёт охвата слоя.": (
+        "The check counts features whose ST_SRID(geom) differs from the SRID "
+        "declared for the table. Usually this comes from inserting geometry "
+        "without an SRID (0) or from loading data in another coordinate system: "
+        "such features are drawn in the wrong place and spoil the layer extent."
+    ),
+    "Задать SRID запросом UPDATE ... SET geom = ST_SetSRID(geom, <SRID>), "
+    "если координаты уже в нужной системе, или ST_Transform, если систему "
+    "нужно пересчитать.": (
+        "Set the SRID with UPDATE ... SET geom = ST_SetSRID(geom, <SRID>) if the "
+        "coordinates are already in the right system, or ST_Transform if the "
+        "system has to be reprojected."
+    ),
+    "Координаты вне допустимого диапазона": "Coordinates out of range",
+    "Долгота и широта вне пределов или бесконечные координаты.": (
+        "Longitude and latitude out of bounds, or infinite coordinates."
+    ),
+    "Для географических данных (SRID 4326) проверяются пределы долготы от "
+    "-180 до 180 и широты от -90 до 90; для остальных систем координат — "
+    "наличие бесконечных значений и NaN. Такие объекты растягивают охват "
+    "слоя, из-за чего «Приблизить к слою» покажет весь мир, а мозаика и тайлы "
+    "строятся неправильно.": (
+        "For geographic data (SRID 4326) the longitude range -180 to 180 and the "
+        "latitude range -90 to 90 are checked; for other coordinate systems the "
+        "presence of infinite values and NaN. Such features stretch the layer "
+        "extent, so \"Zoom to layer\" shows the whole world and tiles and "
+        "mosaics are built incorrectly."
+    ),
+    "Найти объекты запросом SELECT * FROM ... WHERE NOT (ST_XMax(geom) "
+    "BETWEEN -180 AND 180 ...) и исправить координаты вручную.": (
+        "Find the features with SELECT * FROM ... WHERE NOT (ST_XMax(geom) "
+        "BETWEEN -180 AND 180 ...) and fix the coordinates manually."
+    ),
+    "Вырожденные объекты": "Degenerate features",
+    "Полигоны нулевой площади и линии нулевой длины.": (
+        "Polygons with zero area and lines with zero length."
+    ),
+    "Проверка ищет объекты без площади (полигон, все вершины которого "
+    "совпадают) и без длины (линия из одной точки). На карте они выглядят "
+    "как точки, не участвуют в расчёте площадей и создают пустые записи в "
+    "выгрузках и отчётах.": (
+        "The check looks for features without area (a polygon whose vertices "
+        "all coincide) and without length (a line made of one point). On the map "
+        "they look like points, contribute nothing to area totals and leave "
+        "empty records in exports and reports."
+    ),
+    "Удалить такие объекты или исправить вершины: SELECT * FROM ... "
+    "WHERE ST_Area(geom) = 0.": (
+        "Delete such features or fix the vertices: SELECT * FROM ... "
+        "WHERE ST_Area(geom) = 0."
+    ),
+    "Незамкнутые и битые кольца": "Unclosed and broken rings",
+    "Кольца полигонов не замкнуты или содержат слишком мало точек.": (
+        "Polygon rings are not closed or contain too few points."
+    ),
+    "Проверка ищет полигоны, у которых причина невалидности связана с "
+    "кольцом: незамкнутое кольцо, самопересечение кольца, слишком мало точек "
+    "во внешнем или внутреннем кольце. Выполняется только для полигональных "
+    "таблиц, остальные пропускаются.": (
+        "The check looks for polygons whose invalidity reason is about a ring: "
+        "an unclosed ring, a self-intersecting ring, too few points in the outer "
+        "or an inner ring. It runs only for polygon tables, the rest are "
+        "skipped."
+    ),
+    "Причину показывает ST_IsValidReason; исправление — ST_MakeValid или "
+    "ручная правка вершин в редакторе QGIS.": (
+        "ST_IsValidReason shows the cause; the fix is ST_MakeValid or editing "
+        "the vertices in the QGIS editor."
+    ),
+    "Нет пространственного индекса": "No spatial index",
+    "У таблицы нет индекса GiST по столбцу геометрии.": (
+        "The table has no GiST index on its geometry column."
+    ),
+    "Сведения берутся из каталога PostGIS: у таблицы отсутствует индекс "
+    "GiST или SP-GiST по геометрическому столбцу. Без такого индекса любой "
+    "пространственный фильтр читает таблицу целиком, поэтому карта, выборки "
+    "и проверки качества работают медленно. Проверка не обращается к данным "
+    "таблицы и выполняется мгновенно.": (
+        "The information comes from the PostGIS catalog: the table has no GiST "
+        "or SP-GiST index on its geometry column. Without such an index every "
+        "spatial filter scans the whole table, so the map, selections and "
+        "quality checks are slow. The check does not read the table data and "
+        "returns instantly."
+    ),
+    "Построить индекс запросом CREATE INDEX ... USING gist (geom) или "
+    "кнопкой «Создать все пространственные индексы» на вкладке «Таблицы».": (
+        "Build the index with CREATE INDEX ... USING gist (geom) or with the "
+        "\"Create all spatial indexes\" button on the \"Tables\" tab."
+    ),
+
     # Плагин и панель
     "ZGeo-PG-Каталог": "ZGeo-PG Catalog",
     "ZGeo-PG-Каталог — каталог пространственных данных PostGIS": (

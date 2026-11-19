@@ -6,6 +6,7 @@ from dataclasses import replace
 from typing import Dict, List, Optional, Tuple
 
 from qgis.PyQt.QtCore import QSettings, Qt, pyqtSignal
+from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -20,12 +21,15 @@ from qgis.PyQt.QtWidgets import (
     QMenu,
     QMenu,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QSpinBox,
+    QSplitter,
     QStatusBar,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -55,6 +59,7 @@ from .connection import (
 from .formatting import format_number, format_size
 from .i18n import EN_TRANSLATIONS, LANGUAGE_EN, LANGUAGE_KEY, get_language, set_language, tr
 from .load_task import IndexTask, LoadTablesTask
+from .quality import QUALITY_CHECKS, QualityTask, check_by_key
 from .stats import (
     build_geometry_type_distribution,
     build_schema_distribution,
@@ -97,11 +102,19 @@ class ZGeoPgPanel(QDockWidget):
         self._index_errors: List[str] = []
         self._schema_filter: Optional[str] = None
         self._only_geometry = True
+        self._quality_task: Optional[QualityTask] = None
+        self._quality_check_boxes: Dict[str, QCheckBox] = {}
+        self._quality_info_buttons: Dict[str, QPushButton] = {}
+        self._quality_columns: List[str] = []
+        self._quality_row_of: Dict[str, int] = {}
+        self._quality_problems = 0
+        self._quality_errors = 0
 
         self._build_ui()
         self._build_connection_tab()
         self._build_tables_tab()
         self._build_stats_tab()
+        self._build_quality_tab()
         self._retranslate()
         self._restore_connections()
 
@@ -127,6 +140,10 @@ class ZGeoPgPanel(QDockWidget):
         self._tabs = QTabWidget()
         outer.addWidget(self._tabs, 1)
 
+        self._progress_label = QLabel()
+        self._progress_label.setVisible(False)
+        outer.addWidget(self._progress_label)
+
         self._status = QStatusBar()
         self._status.setSizeGripEnabled(True)
         self._connection_dot = QLabel()
@@ -138,6 +155,11 @@ class ZGeoPgPanel(QDockWidget):
         self._status.addWidget(self._connection_label)
         self._status.addWidget(self._status_label, 1)
         self._status.addPermanentWidget(self._selected_label)
+        self._progress_bar = QProgressBar()
+        self._progress_bar.setFixedWidth(180)
+        self._progress_bar.setTextVisible(True)
+        self._progress_bar.setVisible(False)
+        self._status.addPermanentWidget(self._progress_bar)
         outer.addWidget(self._status)
 
         self.setWidget(container)
@@ -205,6 +227,7 @@ class ZGeoPgPanel(QDockWidget):
         self._summary_label = QLabel()
         layout.addWidget(self._summary_label)
 
+        self._tables_page = page
         self._tabs.addTab(page, tr("Таблицы"))
 
     def _build_stats_tab(self) -> None:
@@ -236,7 +259,73 @@ class ZGeoPgPanel(QDockWidget):
 
         layout.addLayout(stats_bar)
 
+        self._stats_page = page
         self._tabs.addTab(page, tr("Статистика"))
+
+    def _build_quality_tab(self) -> None:
+        """Вкладка проверок качества данных: список проверок и результаты."""
+
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(6, 6, 6, 6)
+
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        checks_box = QGroupBox()
+        self._quality_checks_box = checks_box
+        checks_layout = QVBoxLayout(checks_box)
+        checks_layout.setContentsMargins(6, 6, 6, 6)
+        for check in QUALITY_CHECKS:
+            row = QHBoxLayout()
+            box = QCheckBox(tr(check.title))
+            box.setChecked(True)
+            box.setToolTip(tr(check.summary))
+            self._quality_check_boxes[check.key] = box
+            row.addWidget(box, 1)
+            info = QPushButton("i")
+            info.setFixedWidth(26)
+            info.setToolTip(tr("Описание проверки"))
+            info.clicked.connect(
+                lambda _checked=False, key=check.key: self._show_check_description(key)
+            )
+            self._quality_info_buttons[check.key] = info
+            row.addWidget(info)
+            checks_layout.addLayout(row)
+        checks_layout.addStretch(1)
+        splitter.addWidget(checks_box)
+
+        self._quality_help = QTextBrowser()
+        self._quality_help.setMinimumWidth(240)
+        self._quality_help.setVisible(False)
+        splitter.addWidget(self._quality_help)
+        splitter.setStretchFactor(0, 3)
+        splitter.setStretchFactor(1, 4)
+        layout.addWidget(splitter, 1)
+
+        self._quality_table = QTableWidget(0, 0)
+        self._quality_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self._quality_table.verticalHeader().setVisible(False)
+        layout.addWidget(self._quality_table, 1)
+
+        self._quality_summary_label = QLabel()
+        layout.addWidget(self._quality_summary_label)
+
+        buttons = QHBoxLayout()
+        self._quality_run_button = QPushButton()
+        self._quality_run_button.clicked.connect(self._run_quality_checks)
+        self._quality_run_button.setEnabled(False)
+        buttons.addWidget(self._quality_run_button)
+        self._quality_cancel_button = QPushButton()
+        self._quality_cancel_button.clicked.connect(self._cancel_quality_checks)
+        self._quality_cancel_button.setEnabled(False)
+        buttons.addWidget(self._quality_cancel_button)
+        buttons.addStretch(1)
+        layout.addLayout(buttons)
+
+        self._quality_page = page
+        self._tabs.addTab(page, tr("Качество пространственных данных"))
 
     def _build_connection_tab(self) -> None:
         page = QWidget()
@@ -285,6 +374,7 @@ class ZGeoPgPanel(QDockWidget):
         layout.addLayout(actions)
         layout.addStretch(1)
 
+        self._connection_page = page
         self._tabs.addTab(page, tr("Подключения"))
 
     # --------------------------------------------------------------- helpers
@@ -345,9 +435,20 @@ class ZGeoPgPanel(QDockWidget):
             tr("ZGeo-PG — каталог пространственных данных PostGIS") + "  v" + get_plugin_version()
         )
         self._lang_button.setText("RU" if get_language() == LANGUAGE_EN else "EN")
-        self._tabs.setTabText(0, tr("Подключения"))
-        self._tabs.setTabText(1, tr("Таблицы"))
-        self._tabs.setTabText(2, tr("Статистика"))
+        self._tabs.setTabText(self._tabs.indexOf(self._connection_page), tr("Подключения"))
+        self._tabs.setTabText(self._tabs.indexOf(self._tables_page), tr("Таблицы"))
+        self._tabs.setTabText(self._tabs.indexOf(self._stats_page), tr("Статистика"))
+        self._tabs.setTabText(
+            self._tabs.indexOf(self._quality_page),
+            tr("Качество пространственных данных"),
+        )
+        self._quality_checks_box.setTitle(tr("Проверки"))
+        self._quality_run_button.setText(tr("Проверить"))
+        self._quality_cancel_button.setText(tr("Прервать"))
+        for check in QUALITY_CHECKS:
+            self._quality_check_boxes[check.key].setText(tr(check.title))
+            self._quality_check_boxes[check.key].setToolTip(tr(check.summary))
+        self._populate_quality_headers()
         self._connect_button.setText(tr("Отключиться") if self._db else tr("Подключиться"))
         self._refresh_button.setText(tr("Обновить"))
         self._info_button.setText(tr("Информация"))
@@ -401,6 +502,8 @@ class ZGeoPgPanel(QDockWidget):
 
     def _disconnect(self) -> None:
         self._stop_task()
+        self._stop_quality_task()
+        self._quality_run_button.setEnabled(False)
         if self._conn is not None:
             close_connection(self._conn)
         self._conn = None
@@ -437,6 +540,7 @@ class ZGeoPgPanel(QDockWidget):
         self._export_button.setEnabled(True)
         self._create_all_indexes_button.setEnabled(True)
         self._refresh_all_indexes_button.setEnabled(True)
+        self._quality_run_button.setEnabled(True)
         self._populate_stats()
         self._set_status(tr("Готово"))
         if tables:
@@ -776,6 +880,184 @@ class ZGeoPgPanel(QDockWidget):
             export_format=export_format,
             size_columns=(2,),
         )
+
+    # ------------------------------------------------------------ quality tab
+    def _show_check_description(self, key: str) -> None:
+        """Открыть справа описание проверки; повторное нажатие закрывает его."""
+
+        check = check_by_key(key)
+        if check is None:
+            return
+        if self._quality_help.isVisible() and self._quality_help.property("check") == key:
+            self._quality_help.setVisible(False)
+            return
+        self._quality_help.setProperty("check", key)
+        self._quality_help.setHtml(
+            "<h3>{}</h3><p>{}</p><p><b>{}</b> {}</p>".format(
+                tr(check.title),
+                tr(check.description),
+                tr("Как исправить") + ":",
+                tr(check.fix),
+            )
+        )
+        self._quality_help.setVisible(True)
+
+    def _selected_checks(self) -> List:
+        """Проверки, отмеченные галочкой."""
+
+        return [
+            check
+            for check in QUALITY_CHECKS
+            if self._quality_check_boxes[check.key].isChecked()
+        ]
+
+    def _run_quality_checks(self) -> None:
+        """Запустить выбранные проверки в фоновом потоке."""
+
+        if self._db is None or self._conn is None:
+            QMessageBox.information(
+                self, "ZGeo-PG", tr("Сначала подключитесь к базе данных")
+            )
+            return
+        if not self._tables:
+            QMessageBox.information(
+                self, "ZGeo-PG", tr("Список таблиц пуст — нажмите «Обновить»")
+            )
+            return
+        checks = self._selected_checks()
+        if not checks:
+            QMessageBox.information(
+                self, "ZGeo-PG", tr("Отметьте хотя бы одну проверку")
+            )
+            return
+
+        self._stop_quality_task()
+        self._quality_columns = [check.key for check in checks]
+        self._quality_problems = 0
+        self._quality_errors = 0
+        self._build_quality_table(checks)
+
+        self._quality_task = QualityTask(self._conn, list(self._tables), checks, self)
+        self._quality_task.check_started.connect(self._on_quality_check_started)
+        self._quality_task.check_done.connect(self._on_quality_check_done)
+        self._quality_task.progress.connect(self._on_quality_progress)
+        self._quality_task.finished_all.connect(self._on_quality_finished)
+
+        self._quality_run_button.setEnabled(False)
+        self._quality_cancel_button.setEnabled(True)
+        self._progress_bar.setRange(0, len(checks) * len(self._tables))
+        self._progress_bar.setValue(0)
+        self._progress_bar.setVisible(True)
+        self._progress_label.setVisible(True)
+        self._progress_label.setText(tr("Подготовка проверок") + "...")
+        self._set_status(tr("Проверка качества данных") + "...")
+        self._quality_task.start()
+
+    def _build_quality_table(self, checks: List) -> None:
+        """Подготовить таблицу результатов: строка на таблицу, столбец на проверку."""
+
+        headers = [tr("Схема"), tr("Таблица")] + [
+            self._quality_column_title(check.key) for check in checks
+        ]
+        self._quality_table.clear()
+        self._quality_table.setColumnCount(len(headers))
+        self._quality_table.setHorizontalHeaderLabels(headers)
+        self._quality_table.setRowCount(len(self._tables))
+        self._quality_row_of = {}
+        for row, table in enumerate(self._tables):
+            self._quality_row_of[table.full_name] = row
+            self._quality_table.setItem(row, 0, QTableWidgetItem(table.schema))
+            self._quality_table.setItem(row, 1, QTableWidgetItem(table.name))
+        self._quality_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.ResizeToContents
+        )
+        self._quality_summary_label.setText("")
+
+    def _quality_column_title(self, key: str) -> str:
+        """Название проверки по её ключу для заголовка столбца."""
+
+        check = check_by_key(key)
+        return tr(check.title) if check is not None else key
+
+    def _populate_quality_headers(self) -> None:
+        """Обновить заголовки таблицы результатов при смене языка."""
+
+        if self._quality_table.columnCount() < 2:
+            return
+        headers = [tr("Схема"), tr("Таблица")] + [
+            self._quality_column_title(key) for key in self._quality_columns
+        ]
+        self._quality_table.setHorizontalHeaderLabels(headers)
+
+    def _on_quality_check_started(self, title: str) -> None:
+        self._progress_label.setText(tr("Текущая проверка") + ": " + tr(title))
+
+    def _on_quality_check_done(
+        self, key: str, table_name: str, count, error: str
+    ) -> None:
+        if key not in self._quality_columns:
+            return
+        column = 2 + self._quality_columns.index(key)
+        row = self._quality_row_of.get(table_name)
+        if row is None:
+            return
+        if error:
+            self._quality_errors += 1
+            item = QTableWidgetItem(tr("Ошибка"))
+            item.setToolTip(error)
+        elif count is None:
+            item = QTableWidgetItem(tr("Не применимо"))
+        else:
+            item = QTableWidgetItem(str(count))
+            item.setData(Qt.ItemDataRole.UserRole, int(count))
+            if count:
+                self._quality_problems += int(count)
+                item.setBackground(QColor("#ffd9d4"))
+        self._quality_table.setItem(row, column, item)
+
+    def _on_quality_progress(self, done: int, total: int) -> None:
+        self._progress_bar.setRange(0, max(1, total))
+        self._progress_bar.setValue(done)
+
+    def _on_quality_finished(self, cancelled: bool, error: str) -> None:
+        self._quality_task = None
+        self._quality_run_button.setEnabled(self._db is not None)
+        self._quality_cancel_button.setEnabled(False)
+        self._progress_bar.setVisible(False)
+        self._progress_label.setVisible(False)
+        if error:
+            self._set_status(tr("Ошибка") + ": " + error)
+        elif cancelled:
+            self._set_status(tr("Отменено"))
+            self._quality_summary_label.setText(tr("Проверка прервана"))
+        else:
+            self._set_status(tr("Готово"))
+            self._quality_summary_label.setText(
+                tr("Найдено проблем: {}").format(self._quality_problems)
+            )
+        if self._quality_errors:
+            self._quality_summary_label.setText(
+                self._quality_summary_label.text()
+                + " — "
+                + tr("ошибок запросов: {}").format(self._quality_errors)
+            )
+
+    def _cancel_quality_checks(self) -> None:
+        if self._quality_task is not None:
+            self._quality_task.request_cancel()
+            self._set_status(tr("Прерывание") + "...")
+
+    def _stop_quality_task(self) -> None:
+        if self._quality_task is not None:
+            try:
+                self._quality_task.request_cancel()
+                self._quality_task.wait(200)
+            except RuntimeError:
+                pass
+            self._quality_task = None
+        self._quality_cancel_button.setEnabled(False)
+        self._progress_bar.setVisible(False)
+        self._progress_label.setVisible(False)
 
     # -------------------------------------------------------------- stats tab
     def _populate_stats(self) -> None:
@@ -1122,6 +1404,7 @@ class ZGeoPgPanel(QDockWidget):
     def shutdown(self) -> None:
         self._stop_task()
         self._stop_index_task()
+        self._stop_quality_task()
         if self._conn is not None:
             try:
                 close_connection(self._conn)

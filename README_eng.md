@@ -4,7 +4,7 @@
 
 QGIS plugin for viewing spatial data stored in a PostgreSQL / PostGIS database.
 
-Plugin version: **0.18.0**  
+Plugin version: **0.19.0**  
 Release history: [change.log](change.log)
 
 The plugin adds a **"ZGeo-PG"** toolbar panel in QGIS with a **"ZGeo-PG Catalog"** button that opens a floating panel. In the panel:
@@ -27,6 +27,9 @@ The plugin adds a **"ZGeo-PG"** toolbar panel in QGIS with a **"ZGeo-PG Catalog"
 - the schema table on the "Statistics" tab has a "Spatial index" column (Yes/No); the right-click menu of a schema row showing "No" creates indexes for all of its tables;
 - the right-click menu of a table row offers "Create spatial index" for "No" and "Refresh spatial index" plus "Drop spatial index" (with confirmation) for "Yes".
 
+- the **"Geospatial data quality"** tab runs 10 checks: invalid geometry, empty geometry, duplicate geometries, self-intersections, mixed geometry types, wrong SRID, coordinates out of range, degenerate features, unclosed rings and a missing spatial index; every check is switched on with its checkbox and the "i" button opens the check description and the way to fix it on the right;
+- the checks run in a background thread over every loaded table; the "Run checks" button sits at the bottom of the tab next to "Abort", the name of the current check is shown above the status bar and its progress in the status bar, and the results fill a table × check grid with the problem cells highlighted.
+
 The plugin supports QGIS 3.16 and newer, including QGIS 4 / Qt 6.
 
 ## Project Structure
@@ -46,6 +49,7 @@ zgeo-pg/
 ├── stats.py             # aggregate tables for statistics
 ├── charts.py            # bar charts without external dependencies
 ├── load_task.py         # background loading of table characteristics
+├── quality.py           # spatial data quality checks
 ├── info_dialog.py       # "Table Information" dialog
 ├── explorer.py          # open files in Explorer
 ├── formatting.py        # formatting sizes and numbers
@@ -79,7 +83,7 @@ Build the archive:
 powershell -ExecutionPolicy Bypass -File .\scripts\build_zip.ps1
 ```
 
-The ready file will appear in `dist\zgeo-pg-0.18.0.zip`. Only the latest build is kept in `dist`. The script first closes a running QGIS Desktop (it keeps the plugin files locked, so the copy fails otherwise), installs the build into the QGIS Desktop 4.x profile (`%APPDATA%\QGIS\QGIS4\profiles\<profile>\python\plugins\zgeo-pg`) and starts QGIS again. Pass `-SkipQGISInstall` to only build the archive, and `-NoRestart` to leave QGIS closed.
+The ready file will appear in `dist\zgeo-pg-0.19.0.zip`. Only the latest build is kept in `dist`. The script first closes a running QGIS Desktop (it keeps the plugin files locked, so the copy fails otherwise), installs the build into the QGIS Desktop 4.x profile (`%APPDATA%\QGIS\QGIS4\profiles\<profile>\python\plugins\zgeo-pg`) and starts QGIS again. Pass `-SkipQGISInstall` to only build the archive, and `-NoRestart` to leave QGIS closed.
 
 Or install it manually. In QGIS open:
 

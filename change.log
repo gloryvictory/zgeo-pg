@@ -3,6 +3,30 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.19.0] - 2026-11-18
+
+### Added
+
+- "Geospatial data quality" tab with ten checks: invalid geometry, empty
+  geometry, duplicate geometries, self-intersections, mixed geometry types,
+  wrong SRID, coordinates out of range, degenerate features, unclosed rings and
+  a missing spatial index.
+- Every check has a checkbox and an "i" button that opens its full description
+  and the way to fix the problem in a panel on the right.
+- `quality.py` holds the checks as declarative `QualityCheck` records with one
+  SQL template each, and `QualityTask` runs the selected checks over every
+  loaded table in a background thread on its own database connection.
+- The "Run checks" button executes the selected checks, "Abort" stops the run
+  between queries; the current check name is shown above the status bar and its
+  progress in the status bar.
+- Results are shown as a table × check grid, problem cells are highlighted and
+  the summary line counts the problems and the failed queries.
+
+### Changed
+
+- Tab titles are resolved through the stored page widgets, so the new fourth
+  tab keeps its name after switching the interface language.
+
 ## [0.18.0] - 2026-11-18
 
 ### Changed
