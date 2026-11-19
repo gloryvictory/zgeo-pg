@@ -13,6 +13,8 @@ from qgis.PyQt.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDockWidget,
+    QGridLayout,
+    QListWidget,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -59,6 +61,13 @@ from .connection import (
 from .formatting import format_number, format_size
 from .i18n import EN_TRANSLATIONS, LANGUAGE_EN, LANGUAGE_KEY, get_language, set_language, tr
 from .load_task import IndexTask, LoadTablesTask
+from .nsi import (
+    NsiComparison,
+    compare_values,
+    fetch_unique_values,
+    list_tables,
+    list_text_columns,
+)
 from .quality import (
     ATTRIBUTE_CHECKS,
     QUALITY_CHECKS,
@@ -77,6 +86,7 @@ from .table_export import (
     FORMAT_XLSX,
     ask_export_format,
     export_rows_with_dialog,
+    export_sections_with_dialog,
     export_table_with_dialog,
 )
 from .version import get_plugin_version
@@ -444,6 +454,377 @@ class QualityTabPage(QWidget):
         )
 
 
+class NsiSide(QWidget):
+    """Одна сторона сверки: соединение, таблица, столбец и список значений."""
+
+    def __init__(self, host, side: str) -> None:
+        super().__init__()
+        self._host = host
+        self._side = side
+        self._db = None
+        self._conn = None
+        self._values: List[str] = []
+        self._build()
+
+    def _build(self) -> None:
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(4, 4, 4, 4)
+
+        self._conn_combo = QComboBox()
+        self._conn_combo.currentIndexChanged.connect(self._on_connection_changed)
+        self._table_combo = QComboBox()
+        self._table_combo.currentIndexChanged.connect(self._on_table_changed)
+        self._column_combo = QComboBox()
+        self._column_combo.currentIndexChanged.connect(self._on_column_changed)
+
+        form = QGridLayout()
+        self._conn_label = QLabel()
+        self._table_label = QLabel()
+        self._column_label = QLabel()
+        form.addWidget(self._conn_label, 0, 0)
+        form.addWidget(self._conn_combo, 0, 1)
+        form.addWidget(self._table_label, 1, 0)
+        form.addWidget(self._table_combo, 1, 1)
+        form.addWidget(self._column_label, 2, 0)
+        form.addWidget(self._column_combo, 2, 1)
+        layout.addLayout(form)
+
+        self._list = QListWidget()
+        self._list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        layout.addWidget(self._list, 1)
+
+        self._count_label = QLabel()
+        layout.addWidget(self._count_label)
+
+        self._export_button = QPushButton()
+        self._export_button.clicked.connect(self._on_export)
+        self._export_button.setEnabled(False)
+        row = QHBoxLayout()
+        row.addStretch(1)
+        row.addWidget(self._export_button)
+        layout.addLayout(row)
+
+    # ------------------------------------------------------------- переводы
+    def retranslate(self) -> None:
+        self._conn_label.setText(tr("Соединение"))
+        self._table_label.setText(tr("Таблица"))
+        self._column_label.setText(tr("Поле"))
+        self._export_button.setText(tr("Экспорт"))
+        self._export_button.setToolTip(tr("Экспорт списка значений"))
+        self._update_count()
+
+    # -------------------------------------------------------------- данные
+    def reload_connections(self) -> None:
+        """Заполнить список сохранённых соединений."""
+
+        names = list_saved_connections()
+        current = self._conn_combo.currentText()
+        self._conn_combo.blockSignals(True)
+        self._conn_combo.clear()
+        self._conn_combo.addItems(names)
+        if current in names:
+            self._conn_combo.setCurrentText(current)
+        self._conn_combo.blockSignals(False)
+        if names:
+            self._on_connection_changed()
+
+    def _on_connection_changed(self, *_args) -> None:
+        name = self._conn_combo.currentText().strip()
+        self._close_connection()
+        self._table_combo.clear()
+        self._column_combo.clear()
+        self._set_values([])
+        if not name:
+            return
+        conn = load_connection(name)
+        if conn is None:
+            return
+        try:
+            self._db = open_connection(conn, "nsi_" + self._side)
+        except Exception as error:  # noqa: BLE001
+            self._db = None
+            self._host.report_error(str(error))
+            return
+        self._conn = conn
+        for schema, table in list_tables(self._db):
+            self._table_combo.addItem(schema + "." + table, (schema, table))
+
+    def _on_table_changed(self, *_args) -> None:
+        self._column_combo.clear()
+        self._set_values([])
+        target = self._table_combo.currentData()
+        if self._db is None or not target:
+            return
+        try:
+            columns = list_text_columns(self._db, target[0], target[1])
+        except Exception as error:  # noqa: BLE001
+            self._host.report_error(str(error))
+            return
+        self._column_combo.addItems(columns)
+
+    def _on_column_changed(self, *_args) -> None:
+        self._load_values()
+
+    def _load_values(self) -> None:
+        target = self._table_combo.currentData()
+        column = self._column_combo.currentText().strip()
+        if self._db is None or not target or not column:
+            self._set_values([])
+            return
+        try:
+            values = fetch_unique_values(self._db, target[0], target[1], column)
+        except Exception as error:  # noqa: BLE001
+            self._host.report_error(str(error))
+            self._set_values([])
+            return
+        self._set_values(values)
+
+    def _set_values(self, values: List[str]) -> None:
+        self._values = list(values)
+        self._list.clear()
+        self._list.addItems(self._values)
+        self._export_button.setEnabled(bool(self._values))
+        self._update_count()
+
+    def _update_count(self) -> None:
+        self._count_label.setText(tr("Уникальных значений: {}").format(len(self._values)))
+
+    def values(self) -> List[str]:
+        return list(self._values)
+
+    def source(self) -> str:
+        target = self._table_combo.currentData()
+        column = self._column_combo.currentText()
+        if not target or not column:
+            return ""
+        return "{}.{}.{}".format(target[0], target[1], column)
+
+    def _close_connection(self) -> None:
+        if self._conn is not None:
+            try:
+                close_connection(self._conn, "nsi_" + self._side)
+            except RuntimeError:
+                pass
+            self._conn = None
+            self._db = None
+
+    def shutdown(self) -> None:
+        """Закрыть соединение стороны при выгрузке плагина."""
+
+        self._close_connection()
+
+    def _on_export(self) -> None:
+        if not self._values:
+            return
+        parent = self._host
+        export_format = ask_export_format(parent, self._export_button)
+        if export_format is None:
+            return
+        suffix = "html" if export_format == FORMAT_HTML else "xlsx"
+        export_rows_with_dialog(
+            parent,
+            [tr("Значение")],
+            [[value] for value in self._values],
+            "zgeo-pg_nsi_{}.{}".format(self._side, suffix),
+            tr("Качество по НСИ"),
+            export_format=export_format,
+        )
+
+
+class NsiTabPage(QWidget):
+    """Сверка НСИ: два набора значений, статистика и списки расхождений."""
+
+    def __init__(self, host) -> None:
+        super().__init__()
+        self._host = host
+        self._comparison = NsiComparison()
+        self._build()
+
+    def _build(self) -> None:
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(6, 6, 6, 6)
+
+        self._sides = QSplitter(Qt.Orientation.Horizontal)
+        self._left = NsiSide(self, "left")
+        self._right = NsiSide(self, "right")
+        self._sides.addWidget(self._left)
+
+        middle = QWidget()
+        middle_layout = QVBoxLayout(middle)
+        middle_layout.setContentsMargins(4, 4, 4, 4)
+        middle_layout.addStretch(1)
+        self._compare_button = QPushButton()
+        self._compare_button.clicked.connect(self._compare)
+        middle_layout.addWidget(self._compare_button)
+        middle_layout.addStretch(1)
+        self._sides.addWidget(middle)
+        self._sides.addWidget(self._right)
+        self._sides.setStretchFactor(0, 1)
+        self._sides.setStretchFactor(1, 0)
+        self._sides.setStretchFactor(2, 1)
+        layout.addWidget(self._sides, 2)
+
+        self._stats_table = QTableWidget(0, 2)
+        self._stats_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self._stats_table.verticalHeader().setVisible(False)
+        self._stats_table.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu
+        )
+        self._stats_table.customContextMenuRequested.connect(self._on_menu)
+        self._stats_table.cellDoubleClicked.connect(self._on_double_click)
+
+        results = QSplitter(Qt.Orientation.Horizontal)
+        results.addWidget(self._stats_table)
+        self._viewer = QListWidget()
+        self._viewer.setVisible(False)
+        results.addWidget(self._viewer)
+        results.setStretchFactor(0, 1)
+        results.setStretchFactor(1, 1)
+        layout.addWidget(results, 1)
+
+        self._status_label = QLabel()
+        layout.addWidget(self._status_label)
+
+        buttons = QHBoxLayout()
+        self._export_button = QPushButton()
+        self._export_button.clicked.connect(self._on_export)
+        self._export_button.setEnabled(False)
+        buttons.addStretch(1)
+        buttons.addWidget(self._export_button)
+        layout.addLayout(buttons)
+
+        self._populate_stats()
+
+    def retranslate(self) -> None:
+        self._left.retranslate()
+        self._right.retranslate()
+        self._compare_button.setText(tr("Сравнить"))
+        self._export_button.setText(tr("Экспорт"))
+        self._export_button.setToolTip(tr("Экспорт результатов сверки"))
+        self._stats_table.setHorizontalHeaderLabels([tr("Категория"), tr("Количество")])
+        self._populate_stats()
+        self._render_status()
+
+    # ------------------------------------------------------------ сравнение
+    def _compare(self) -> None:
+        left = self._left.values()
+        right = self._right.values()
+        if not left or not right:
+            QMessageBox.information(
+                self, "ZGeo-PG", tr("Загрузите значения с обеих сторон")
+            )
+            return
+        self._comparison = compare_values(left, right)
+        self._populate_stats()
+        self._export_button.setEnabled(True)
+        self._render_status()
+        self._viewer.setVisible(False)
+
+    def _categories(self) -> List[Tuple[str, List[str]]]:
+        return [
+            (tr("Совпало"), self._comparison.matched),
+            (
+                tr("Есть в левой панели, но нет в правой"),
+                self._comparison.left_only,
+            ),
+            (
+                tr("Есть в правой, но нет в левой"),
+                self._comparison.right_only,
+            ),
+        ]
+
+    def _populate_stats(self) -> None:
+        categories = self._categories()
+        self._stats_table.setRowCount(len(categories))
+        self._stats_table.setColumnCount(2)
+        for row, (name, values) in enumerate(categories):
+            self._stats_table.setItem(row, 0, QTableWidgetItem(name))
+            count_item = QTableWidgetItem(str(len(values)))
+            count_item.setData(Qt.ItemDataRole.UserRole, len(values))
+            self._stats_table.setItem(row, 1, count_item)
+        self._stats_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.ResizeToContents
+        )
+        self._stats_table.horizontalHeader().setStretchLastSection(True)
+
+    def _render_status(self) -> None:
+        total = self._comparison.total
+        if not total:
+            self._status_label.setText(tr("Сравнение не выполнялось"))
+            return
+        self._status_label.setText(
+            tr("Всего уникальных значений в сравнении: {}").format(total)
+        )
+
+    # --------------------------------------------------------------- списки
+    def _on_menu(self, position) -> None:
+        row = self._stats_table.rowAt(position.y())
+        categories = self._categories()
+        if row < 0 or row >= len(categories):
+            return
+        menu = QMenu(self)
+        targets = {}
+        for index, (name, values) in enumerate(categories):
+            action = menu.addAction(name)
+            action.setCheckable(True)
+            action.setChecked(index == row)
+            targets[action] = (name, values)
+        chosen = menu.exec(self._stats_table.viewport().mapToGlobal(position))
+        if chosen in targets:
+            self._show_list(*targets[chosen])
+
+    def _on_double_click(self, row: int, _column: int) -> None:
+        categories = self._categories()
+        if 0 <= row < len(categories):
+            name, values = categories[row]
+            self._show_list(name, values)
+
+    def _show_list(self, name: str, values: List[str]) -> None:
+        """Открыть справа список значений выбранной категории."""
+
+        self._viewer.clear()
+        self._viewer.addItems(values)
+        self._viewer.setVisible(True)
+        self._host._set_status(tr(name) + ": " + str(len(values)))
+
+    # --------------------------------------------------------------- экспорт
+    def _on_export(self) -> None:
+        if not self._comparison.total:
+            QMessageBox.information(
+                self, "ZGeo-PG", tr("Сначала выполните сравнение")
+            )
+            return
+        export_format = ask_export_format(self, self._export_button)
+        if export_format is None:
+            return
+        sections = [
+            (name, [tr("Значение")], [[value] for value in values])
+            for name, values in self._categories()
+        ]
+        suffix = "html" if export_format == FORMAT_HTML else "xlsx"
+        export_sections_with_dialog(
+            self,
+            sections,
+            "zgeo-pg_nsi_compare." + suffix,
+            tr("Качество по НСИ"),
+            export_format=export_format,
+        )
+
+    # -------------------------------------------------------------- сервис
+    def report_error(self, message: str) -> None:
+        self._host._set_status(tr("Ошибка") + ": " + message)
+
+    def reload_connections(self) -> None:
+        self._left.reload_connections()
+        self._right.reload_connections()
+
+    def shutdown(self) -> None:
+        self._left.shutdown()
+        self._right.shutdown()
+
+
 class ZGeoPgPanel(QDockWidget):
     """Плавающая панель каталога пространственных данных PostGIS."""
 
@@ -458,9 +839,12 @@ class ZGeoPgPanel(QDockWidget):
         self._db = None
         self._tables: List[SpatialTable] = []
         self._task: Optional[LoadTablesTask] = None
+        self._index_task: Optional[IndexTask] = None
+        self._index_action = IndexTask.ACTION_CREATE
+        self._index_changed: List[int] = []
+        self._index_errors: List[str] = []
         self._quality_pages: List["QualityTabPage"] = []
         self._active_page = None
-
 
         self._schema_filter: Optional[str] = None
         self._only_geometry = True
@@ -480,6 +864,8 @@ class ZGeoPgPanel(QDockWidget):
             "Качество атрибутивных данных",
             "zgeo-pg_attributes",
         )
+        self._nsi_page = NsiTabPage(self)
+        self._tabs.addTab(self._nsi_page, tr("Качество по НСИ"))
         self._retranslate()
         self._restore_connections()
 
@@ -783,6 +1169,8 @@ class ZGeoPgPanel(QDockWidget):
         self._tabs.setTabText(self._tabs.indexOf(self._connection_page), tr("Подключения"))
         self._tabs.setTabText(self._tabs.indexOf(self._tables_page), tr("Таблицы"))
         self._tabs.setTabText(self._tabs.indexOf(self._stats_page), tr("Статистика"))
+        self._tabs.setTabText(self._tabs.indexOf(self._nsi_page), tr("Качество по НСИ"))
+        self._nsi_page.retranslate()
         for page in self._quality_pages:
             self._tabs.setTabText(self._tabs.indexOf(page), tr(page.title_source))
             page.retranslate()
@@ -1353,9 +1741,6 @@ class ZGeoPgPanel(QDockWidget):
     def _on_refresh_indexes_for_all(self) -> None:
         self._refresh_indexes(list(self._tables))
 
-    def _on_refresh_indexes_for_all(self) -> None:
-        self._refresh_indexes(list(self._tables))
-
     def _create_indexes(self, tables: List[SpatialTable]) -> None:
         self._run_index_action(IndexTask.ACTION_CREATE, tables)
 
@@ -1493,6 +1878,7 @@ class ZGeoPgPanel(QDockWidget):
         index = self._saved_combo.findText(conn.name)
         if index >= 0:
             self._saved_combo.setCurrentIndex(index)
+        self._nsi_page.reload_connections()
 
     def _fill_connection_form(self, conn: PGConnection) -> None:
         self._conn_name.setText(conn.name)
@@ -1536,6 +1922,7 @@ class ZGeoPgPanel(QDockWidget):
             return
         delete_connection(name)
         self._reload_saved_combo()
+        self._nsi_page.reload_connections()
 
     def _on_save_connection(self) -> None:
         conn = self._current_connection_form()
@@ -1548,6 +1935,7 @@ class ZGeoPgPanel(QDockWidget):
             self._set_status(tr("Соединение сохранено"))
         else:
             self._set_status(tr("Не удалось сохранить соединение в SQLite"))
+        self._nsi_page.reload_connections()
 
     def _on_test_connection(self) -> None:
         conn = self._current_connection_form()
@@ -1563,6 +1951,7 @@ class ZGeoPgPanel(QDockWidget):
         QMessageBox.information(self, "ZGeo-PG", tr("Подключено к") + f" {conn.qualified}")
 
     def shutdown(self) -> None:
+        self._nsi_page.shutdown()
         self._stop_task()
         self._stop_index_task()
         for page in self._quality_pages:

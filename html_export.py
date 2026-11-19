@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from html import escape
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Tuple
 
 from .formatting import format_number
 
@@ -82,6 +82,107 @@ p.footer {{
 
 
 _SIZE_RE = re.compile(r"^[\d\s\u00a0.,]+(?:Б|КБ|МБ|ГБ|ТБ|B|KB|MB|GB|TB)$")
+
+
+_SECTIONS_PAGE = """<!DOCTYPE html>
+<html lang="{lang}">
+<head>
+<meta charset="utf-8">
+<title>{title}</title>
+<style>
+body {{
+    font-family: "Segoe UI", "Noto Sans", Arial, sans-serif;
+    font-size: 13px;
+    color: #202020;
+    margin: 18px;
+}}
+h1 {{
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 12px;
+}}
+h2 {{
+    font-size: 14px;
+    font-weight: 600;
+    margin: 20px 0 8px;
+}}
+table {{
+    border-collapse: collapse;
+    min-width: 40%;
+}}
+th, td {{
+    border: 1px solid #c8c8c8;
+    padding: 4px 8px;
+    text-align: left;
+    vertical-align: top;
+}}
+th {{
+    background: #eef2f7;
+    font-weight: 600;
+    white-space: nowrap;
+}}
+tbody tr:nth-child(even) td {{
+    background: #fafafa;
+}}
+td.number {{
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}}
+p.footer {{
+    color: #707070;
+    font-size: 11px;
+    margin-top: 18px;
+}}
+</style>
+</head>
+<body>
+<h1>{title}</h1>
+{sections}
+<p class="footer">{footer}</p>
+</body>
+</html>
+"""
+
+
+def write_html_sections(
+    path: Path,
+    sections: Sequence[Tuple[str, Sequence[str], Sequence[Sequence]]],
+    title: str = "",
+    footer: str = "",
+    lang: str = "ru",
+) -> Path:
+    """Записать несколько таблиц на одну HTML-страницу.
+
+    Каждый раздел выводится своим заголовком и своей таблицей, поэтому в
+    одном файле видно и совпадения, и оба списка расхождений.
+    """
+
+    path = Path(path)
+    if path.suffix.lower() not in (".html", ".htm"):
+        path = path.with_suffix(".html")
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    blocks = []
+    for name, headers, rows in sections:
+        body_rows = [_row_html(row) for row in rows]
+        blocks.append(
+            '<h2>{}</h2>\n<table>\n<thead>\n<tr>{}</tr>\n</thead>\n'
+            "<tbody>\n{}\n</tbody>\n</table>".format(
+                escape(name),
+                _row_html(headers, tag="th"),
+                "\n".join(body_rows),
+            )
+        )
+
+    page = _SECTIONS_PAGE.format(
+        lang=escape(lang or "ru"),
+        title=escape(title or ""),
+        sections="\n".join(blocks),
+        footer=escape(footer or ""),
+    )
+    path.write_text(page, encoding="utf-8")
+    return path
 
 
 def _format_cell(value) -> tuple:

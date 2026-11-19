@@ -3,6 +3,39 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.22.0] - 2026-11-18
+
+### Added
+
+- "Reference data quality" tab: the panel is split in two, each side picks a
+  connection, a table and a text field and shows the sorted list of unique
+  values below.
+- "Compare" between the panels fills the statistics table with "Matched",
+  "Present in the left panel but not in the right" and "Present in the right
+  panel but not in the left".
+- The statistics table has a right-click menu (and a double click) that opens
+  the values of the chosen category in a list on the right.
+- Every list and the comparison result can be exported: Excel writes each
+  category to its own sheet, HTML writes every category as its own table on one
+  page.
+
+### Changed
+
+- `nsi.py` holds the data access: table and text column listing, the sorted
+  unique value query with a row limit, and `compare_values()` returning a
+  `NsiComparison`.
+- `html_export.write_html_sections()` and
+  `table_export.export_sections_with_dialog()` write several titled sections in
+  one file.
+- The Nsi tab keeps its own connections per side, refreshes them when a
+  connection is saved, restored or deleted, and closes them on plugin unload.
+
+### Fixed
+
+- `ZGeoPgPanel.__init__` had lost the index task attributes while the quality
+  tabs were extracted, so unload and the spatial index actions raised
+  AttributeError; the duplicated `_on_refresh_indexes_for_all` is gone too.
+
 ## [0.21.0] - 2026-11-18
 
 ### Added

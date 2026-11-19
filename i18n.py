@@ -586,6 +586,33 @@ EN_TRANSLATIONS = {
         "UPDATE ... SET field = NULL WHERE field < DATE '1900-01-01'."
     ),
 
+    # Качество по НСИ
+    "Качество по НСИ": "Reference data quality",
+    "Соединение": "Connection",
+    "Поле": "Field",
+    "Сравнить": "Compare",
+    "Значение": "Value",
+    "Категория": "Category",
+    "Количество": "Count",
+    "Совпало": "Matched",
+    "Есть в левой панели, но нет в правой": (
+        "Present in the left panel but not in the right"
+    ),
+    "Есть в правой, но нет в левой": (
+        "Present in the right panel but not in the left"
+    ),
+    "Уникальных значений: {}": "Unique values: {}",
+    "Всего уникальных значений в сравнении: {}": (
+        "Total unique values compared: {}"
+    ),
+    "Сравнение не выполнялось": "No comparison has been run",
+    "Загрузите значения с обеих сторон": (
+        "Load values on both sides first"
+    ),
+    "Сначала выполните сравнение": "Run the comparison first",
+    "Экспорт списка значений": "Export the list of values",
+    "Экспорт результатов сверки": "Export the comparison results",
+
     # Плагин и панель
     "ZGeo-PG-Каталог": "ZGeo-PG Catalog",
     "ZGeo-PG-Каталог — каталог пространственных данных PostGIS": (
