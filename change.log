@@ -3,6 +3,28 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.20.0] - 2026-11-18
+
+### Added
+
+- "Export" button on the quality tab: the check results are written to Excel
+  or HTML with a totals row that sums every numeric check column.
+
+### Changed
+
+- Check titles, summaries, full descriptions and fix hints are part of the
+  translation dictionary, so language switching also covers the description
+  panel, the tooltips and the results table headers.
+- Results are kept as raw values in `_quality_results` and rendered through
+  `_render_quality_cell()` / `_render_quality_summary()`, so switching the
+  language redraws "Not applicable", "Error" and the summary line without
+  re-running the checks. The open description is re-rendered as well.
+
+### Fixed
+
+- The Russian description of the coordinate range check did not match its
+  translation key and stayed untranslated.
+
 ## [0.19.0] - 2026-11-18
 
 ### Added

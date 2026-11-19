@@ -109,6 +109,8 @@ class ZGeoPgPanel(QDockWidget):
         self._quality_row_of: Dict[str, int] = {}
         self._quality_problems = 0
         self._quality_errors = 0
+        self._quality_state: Tuple[str, str] = ("idle", "")
+        self._quality_results: Dict[str, Dict[str, Tuple[object, str]]] = {}
 
         self._build_ui()
         self._build_connection_tab()
@@ -297,6 +299,7 @@ class ZGeoPgPanel(QDockWidget):
         self._quality_help = QTextBrowser()
         self._quality_help.setMinimumWidth(240)
         self._quality_help.setVisible(False)
+        self._quality_help_key: Optional[str] = None
         splitter.addWidget(self._quality_help)
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 4)
@@ -322,6 +325,10 @@ class ZGeoPgPanel(QDockWidget):
         self._quality_cancel_button.setEnabled(False)
         buttons.addWidget(self._quality_cancel_button)
         buttons.addStretch(1)
+        self._quality_export_button = QPushButton()
+        self._quality_export_button.clicked.connect(self._on_quality_export)
+        self._quality_export_button.setEnabled(False)
+        buttons.addWidget(self._quality_export_button)
         layout.addLayout(buttons)
 
         self._quality_page = page
@@ -445,10 +452,16 @@ class ZGeoPgPanel(QDockWidget):
         self._quality_checks_box.setTitle(tr("Проверки"))
         self._quality_run_button.setText(tr("Проверить"))
         self._quality_cancel_button.setText(tr("Прервать"))
+        self._quality_export_button.setText(tr("Экспорт"))
+        self._quality_export_button.setToolTip(tr("Экспорт результатов проверок"))
         for check in QUALITY_CHECKS:
             self._quality_check_boxes[check.key].setText(tr(check.title))
             self._quality_check_boxes[check.key].setToolTip(tr(check.summary))
         self._populate_quality_headers()
+        self._render_quality_cells()
+        self._render_quality_summary()
+        if self._quality_help_key is not None:
+            self._render_check_description(self._quality_help_key)
         self._connect_button.setText(tr("Отключиться") if self._db else tr("Подключиться"))
         self._refresh_button.setText(tr("Обновить"))
         self._info_button.setText(tr("Информация"))
@@ -882,16 +895,13 @@ class ZGeoPgPanel(QDockWidget):
         )
 
     # ------------------------------------------------------------ quality tab
-    def _show_check_description(self, key: str) -> None:
-        """Открыть справа описание проверки; повторное нажатие закрывает его."""
+    def _render_check_description(self, key: str) -> None:
+        """Показать описание проверки на текущем языке интерфейса."""
 
         check = check_by_key(key)
         if check is None:
             return
-        if self._quality_help.isVisible() and self._quality_help.property("check") == key:
-            self._quality_help.setVisible(False)
-            return
-        self._quality_help.setProperty("check", key)
+        self._quality_help_key = key
         self._quality_help.setHtml(
             "<h3>{}</h3><p>{}</p><p><b>{}</b> {}</p>".format(
                 tr(check.title),
@@ -900,7 +910,77 @@ class ZGeoPgPanel(QDockWidget):
                 tr(check.fix),
             )
         )
+
+    def _show_check_description(self, key: str) -> None:
+        """Открыть справа описание проверки; повторное нажатие закрывает его."""
+
+        if check_by_key(key) is None:
+            return
+        if self._quality_help.isVisible() and self._quality_help_key == key:
+            self._quality_help.setVisible(False)
+            return
+        self._render_check_description(key)
         self._quality_help.setVisible(True)
+
+    def _quality_export_rows(self) -> Tuple[List[str], List[List[object]]]:
+        """Заголовки и строки таблицы результатов вместе со строкой «Итого»."""
+
+        table = self._quality_table
+        headers = [
+            table.horizontalHeaderItem(column).text()
+            if table.horizontalHeaderItem(column) is not None
+            else ""
+            for column in range(table.columnCount())
+        ]
+        rows: List[List[object]] = []
+        sums = [0] * table.columnCount()
+        for row in range(table.rowCount()):
+            values: List[object] = []
+            for column in range(table.columnCount()):
+                item = table.item(row, column)
+                if item is None:
+                    values.append("")
+                    continue
+                raw = item.data(Qt.ItemDataRole.UserRole)
+                if isinstance(raw, int):
+                    sums[column] += raw
+                    values.append(raw)
+                else:
+                    values.append(item.text())
+            rows.append(values)
+
+        total: List[object] = [tr("Итого"), f"{table.rowCount()} " + tr("таблиц")]
+        for column in range(2, table.columnCount()):
+            total.append(sums[column] if sums[column] else "")
+        rows.append(total)
+        return headers, rows
+
+    def _on_quality_export(self) -> None:
+        """Экспорт результатов проверок в Excel или HTML."""
+
+        if self._quality_table.rowCount() == 0 or not self._quality_columns:
+            QMessageBox.information(
+                self, "ZGeo-PG", tr("Результатов нет — нажмите «Проверить»")
+            )
+            return
+        export_format = ask_export_format(self, self._quality_export_button)
+        if export_format is None:
+            return
+        headers, rows = self._quality_export_rows()
+        default_name = (
+            "zgeo-pg_quality.html"
+            if export_format == FORMAT_HTML
+            else "zgeo-pg_quality.xlsx"
+        )
+        export_rows_with_dialog(
+            self,
+            headers,
+            rows,
+            default_name,
+            tr("Качество пространственных данных"),
+            export_format=export_format,
+            total_index=len(rows) - 1,
+        )
 
     def _selected_checks(self) -> List:
         """Проверки, отмеченные галочкой."""
@@ -935,6 +1015,7 @@ class ZGeoPgPanel(QDockWidget):
         self._quality_columns = [check.key for check in checks]
         self._quality_problems = 0
         self._quality_errors = 0
+        self._quality_state = ("running", "")
         self._build_quality_table(checks)
 
         self._quality_task = QualityTask(self._conn, list(self._tables), checks, self)
@@ -972,6 +1053,8 @@ class ZGeoPgPanel(QDockWidget):
             QHeaderView.ResizeMode.ResizeToContents
         )
         self._quality_summary_label.setText("")
+        self._quality_export_button.setEnabled(False)
+        self._quality_results = {}
 
     def _quality_column_title(self, key: str) -> str:
         """Название проверки по её ключу для заголовка столбца."""
@@ -1001,8 +1084,18 @@ class ZGeoPgPanel(QDockWidget):
         row = self._quality_row_of.get(table_name)
         if row is None:
             return
+        self._quality_results.setdefault(table_name, {})[key] = (count, error)
         if error:
             self._quality_errors += 1
+        elif count:
+            self._quality_problems += int(count)
+        self._render_quality_cell(row, column, count, error)
+        self._quality_export_button.setEnabled(True)
+
+    def _render_quality_cell(self, row: int, column: int, count, error: str) -> None:
+        """Записать одну ячейку результатов на текущем языке."""
+
+        if error:
             item = QTableWidgetItem(tr("Ошибка"))
             item.setToolTip(error)
         elif count is None:
@@ -1011,9 +1104,37 @@ class ZGeoPgPanel(QDockWidget):
             item = QTableWidgetItem(str(count))
             item.setData(Qt.ItemDataRole.UserRole, int(count))
             if count:
-                self._quality_problems += int(count)
                 item.setBackground(QColor("#ffd9d4"))
         self._quality_table.setItem(row, column, item)
+
+    def _render_quality_cells(self) -> None:
+        """Перерисовать все готовые ячейки результатов."""
+
+        for table_name, results in self._quality_results.items():
+            row = self._quality_row_of.get(table_name)
+            if row is None:
+                continue
+            for key, (count, error) in results.items():
+                if key not in self._quality_columns:
+                    continue
+                column = 2 + self._quality_columns.index(key)
+                self._render_quality_cell(row, column, count, error)
+
+    def _render_quality_summary(self) -> None:
+        """Показать итог проверок на текущем языке."""
+
+        state, error = self._quality_state
+        if state == "error":
+            text = tr("Ошибка") + ": " + error
+        elif state == "cancelled":
+            text = tr("Проверка прервана")
+        elif state == "done":
+            text = tr("Найдено проблем: {}").format(self._quality_problems)
+            if self._quality_errors:
+                text += " — " + tr("ошибок запросов: {}").format(self._quality_errors)
+        else:
+            text = ""
+        self._quality_summary_label.setText(text)
 
     def _on_quality_progress(self, done: int, total: int) -> None:
         self._progress_bar.setRange(0, max(1, total))
@@ -1026,21 +1147,15 @@ class ZGeoPgPanel(QDockWidget):
         self._progress_bar.setVisible(False)
         self._progress_label.setVisible(False)
         if error:
+            self._quality_state = ("error", error)
             self._set_status(tr("Ошибка") + ": " + error)
         elif cancelled:
+            self._quality_state = ("cancelled", "")
             self._set_status(tr("Отменено"))
-            self._quality_summary_label.setText(tr("Проверка прервана"))
         else:
+            self._quality_state = ("done", "")
             self._set_status(tr("Готово"))
-            self._quality_summary_label.setText(
-                tr("Найдено проблем: {}").format(self._quality_problems)
-            )
-        if self._quality_errors:
-            self._quality_summary_label.setText(
-                self._quality_summary_label.text()
-                + " — "
-                + tr("ошибок запросов: {}").format(self._quality_errors)
-            )
+        self._render_quality_summary()
 
     def _cancel_quality_checks(self) -> None:
         if self._quality_task is not None:

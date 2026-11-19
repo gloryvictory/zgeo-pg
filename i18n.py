@@ -192,6 +192,10 @@ EN_TRANSLATIONS = {
     "Найдено проблем: {}": "Problems found: {}",
     "ошибок запросов: {}": "failed queries: {}",
     "Не применимо": "Not applicable",
+    "Экспорт результатов проверок": "Export of check results",
+    "Результатов нет — нажмите «Проверить»": (
+        "There are no results — click \"Run checks\""
+    ),
     "Ошибка запроса": "Query failed",
     "Сначала подключитесь к базе данных": "Connect to a database first",
     "Список таблиц пуст — нажмите «Обновить»": (
@@ -325,8 +329,8 @@ EN_TRANSLATIONS = {
     "Для географических данных (SRID 4326) проверяются пределы долготы от "
     "-180 до 180 и широты от -90 до 90; для остальных систем координат — "
     "наличие бесконечных значений и NaN. Такие объекты растягивают охват "
-    "слоя, из-за чего «Приблизить к слою» покажет весь мир, а мозаика и тайлы "
-    "строятся неправильно.": (
+    "слоя, из-за чего «Приблизить к слою» показывает весь мир, а мозаика и "
+    "тайлы строятся неправильно.": (
         "For geographic data (SRID 4326) the longitude range -180 to 180 and the "
         "latitude range -90 to 90 are checked; for other coordinate systems the "
         "presence of infinite values and NaN. Such features stretch the layer "
