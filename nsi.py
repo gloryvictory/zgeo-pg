@@ -19,6 +19,12 @@ from .i18n import tr
 # Защита от «разгона» памяти на больших справочниках.
 VALUE_LIMIT = 100000
 
+# Служебные таблицы PostGIS и pgAdmin: в справочниках они только мешают.
+SYSTEM_TABLES = (
+    "'geometry_columns', 'geography_columns', 'spatial_ref_sys', "
+    "'raster_columns', 'raster_overviews'"
+)
+
 TABLES_SQL = (
     "SELECT n.nspname, c.relname "
     "FROM pg_catalog.pg_class c "
@@ -27,6 +33,8 @@ TABLES_SQL = (
     "  AND n.nspname NOT IN ('pg_catalog', 'information_schema') "
     "  AND n.nspname NOT LIKE 'pg\\_toast%' "
     "  AND n.nspname NOT LIKE 'pg\\_temp%' "
+    "  AND pg_catalog.has_table_privilege(c.oid, 'SELECT') "
+    "  AND c.relname NOT IN (" + SYSTEM_TABLES + ") "
     "ORDER BY n.nspname, c.relname"
 )
 
@@ -44,7 +52,11 @@ COLUMNS_SQL = (
 
 
 def list_tables(db) -> List[Tuple[str, str]]:
-    """Все таблицы и представления базы: список пар (схема, имя)."""
+    """Таблицы и представления, доступные пользователю на чтение.
+
+    Таблицы без права SELECT не попадают в список: иначе выбор такой
+    таблицы в интерфейсе заканчивался ошибкой «нет доступа к таблице».
+    """
 
     query = QSqlQuery(db)
     tables: List[Tuple[str, str]] = []
@@ -58,8 +70,50 @@ def list_tables(db) -> List[Tuple[str, str]]:
     return tables
 
 
+# Пометка ошибки прав доступа: текст собирается при показе, чтобы он
+# переключался вместе с языком интерфейса. Наружу выходит только через
+# readable_error().
+PERMISSION_MARK = "permission-mark::"
+
+
+def permission_error(table_note: str = "") -> str:
+    """Текст ошибки прав доступа с пометкой для повторного перевода."""
+
+    return PERMISSION_MARK + table_note
+
+
+def readable_error(message: str) -> str:
+    """Перевести служебную пометку ошибки в текст на текущем языке."""
+
+    if message.startswith(PERMISSION_MARK):
+        note = message[len(PERMISSION_MARK):]
+        text = tr("Нет доступа к таблице")
+        return text + (": " + note if note else "")
+    return message
+
+
+def query_error(query, table_note: str = "") -> str:
+    """Понятный текст ошибки запроса: права доступа переводятся отдельно."""
+
+    error = query.lastError()
+    text = (error.databaseText() or error.text() or "").strip()
+    code = str(error.nativeErrorCode() or "")
+    lowered = text.casefold()
+    if code == "42501" or "permission denied" in lowered or "нет доступа" in lowered:
+        return permission_error(table_note)
+    for prefix in ("ОШИБКА:", "ERROR:", "ОШИБКА :"):
+        if text.upper().startswith(prefix):
+            text = text[len(prefix):].strip()
+            break
+    return text or tr("Ошибка запроса")
+
+
 def list_text_columns(db, schema: str, name: str) -> List[str]:
-    """Текстовые столбцы таблицы в порядке объявления."""
+    """Текстовые столбцы таблицы в порядке объявления.
+
+    Raises:
+        RuntimeError: если столбцы прочитать не удалось.
+    """
 
     query = QSqlQuery(db)
     query.prepare(COLUMNS_SQL)
@@ -67,7 +121,7 @@ def list_text_columns(db, schema: str, name: str) -> List[str]:
     query.addBindValue(name)
     columns: List[str] = []
     if not query.exec():
-        return columns
+        raise RuntimeError(query_error(query, schema + "." + name))
     while query.next():
         column = str(query.value(0) or "")
         if column:
@@ -103,7 +157,7 @@ def fetch_unique_values(
 
     query = QSqlQuery(db)
     if not query.exec(unique_values_sql(schema, name, column, limit)):
-        raise RuntimeError(query.lastError().text() or tr("Ошибка запроса"))
+        raise RuntimeError(query_error(query, schema + "." + name))
     values: List[str] = []
     while query.next():
         values.append(str(query.value(0) or ""))

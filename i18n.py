@@ -607,6 +607,7 @@ EN_TRANSLATIONS = {
     ),
     "Сравнение не выполнялось": "No comparison has been run",
     "Соединение не найдено": "Connection not found",
+    "Нет доступа к таблице": "No access to the table",
     "Дождитесь окончания текущих проверок": (
         "Wait until the running checks finish"
     ),

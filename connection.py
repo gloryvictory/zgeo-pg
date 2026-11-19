@@ -336,8 +336,11 @@ def open_connection(conn: PGConnection, tag: Optional[str] = None) -> QSqlDataba
     db_name = _connection_name(conn, tag)
     if QSqlDatabase.contains(db_name):
         db = QSqlDatabase.database(db_name, open=True)
-        if db.isOpen():
+        if db.isOpen() and _is_alive(db):
             return db
+        # Соединение осталось от прошлого выбора и больше не отвечает:
+        # Qt уже мог объявить его недействительным, поэтому берём новое.
+        del db
         QSqlDatabase.removeDatabase(db_name)
 
     db = QSqlDatabase.addDatabase("QPSQL", db_name)
@@ -360,6 +363,13 @@ def open_connection(conn: PGConnection, tag: Optional[str] = None) -> QSqlDataba
     _exec(db, "SET search_path TO public,postgis,topology")
 
     return db
+
+
+def _is_alive(db) -> bool:
+    """Проверить, что соединение отвечает на простой запрос."""
+
+    query = QSqlQuery(db)
+    return bool(query.exec("SELECT 1")) and bool(query.next())
 
 
 def close_connection(conn: PGConnection, tag: Optional[str] = None) -> None:

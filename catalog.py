@@ -154,6 +154,9 @@ def fetch_spatial_tables(db, schemas: Optional[List[str]] = None) -> List[Spatia
             + "  SELECT n.oid FROM pg_catalog.pg_namespace n "
             + "  WHERE n.nspname = " + view + ".f_table_schema"
             + ")"
+            # Таблицы без права SELECT только мешают: любой запрос к ним
+            # заканчивается ошибкой «нет доступа к таблице».
+            + " AND pg_catalog.has_table_privilege(c.oid, 'SELECT')"
         )
         if schemas:
             where = " AND " + view + ".f_table_schema IN ("

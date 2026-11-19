@@ -3,6 +3,27 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.24.0] - 2026-11-18
+
+### Fixed
+
+- Tables and views the user has no SELECT privilege on are no longer listed in
+  the reference data combos or in the spatial table list, so a table like
+  `nsi_field_name` can no longer be picked and fail on read. Both queries now
+  filter with `pg_catalog.has_table_privilege(c.oid, 'SELECT')`.
+- A privilege error is reported as "No access to the table: schema.table"
+  instead of the raw "ОШИБКА: нет доступа к таблице ... (42501) QPSQL:
+  Невозможно создать запрос" text, which the status bar also prefixed with
+  another "Ошибка:".
+- `list_text_columns()` raised nothing before and silently returned an empty
+  column list; it now raises with that readable message.
+
+### Changed
+
+- The PostGIS bookkeeping relations (`geometry_columns`,
+  `geography_columns`, `spatial_ref_sys`, `raster_columns`,
+  `raster_overviews`) are hidden from the reference data table list.
+
 ## [0.23.0] - 2026-11-18
 
 ### Fixed

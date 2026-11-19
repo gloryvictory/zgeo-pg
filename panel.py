@@ -67,6 +67,7 @@ from .nsi import (
     fetch_unique_values,
     list_tables,
     list_text_columns,
+    readable_error,
 )
 from .quality import (
     ATTRIBUTE_CHECKS,
@@ -664,6 +665,7 @@ class NsiTabPage(QWidget):
         self._host = host
         self._comparison = NsiComparison()
         self._status_text = ""
+        self._status_error = ""
         self._build()
 
     def _build(self) -> None:
@@ -743,6 +745,7 @@ class NsiTabPage(QWidget):
             )
             return
         self._status_text = ""
+        self._status_error = ""
         self._comparison = compare_values(left, right)
         self._populate_stats()
         self._export_button.setEnabled(True)
@@ -777,8 +780,10 @@ class NsiTabPage(QWidget):
         self._stats_table.horizontalHeader().setStretchLastSection(True)
 
     def _render_status(self) -> None:
-        if self._status_text:
-            self._status_label.setText(self._status_text)
+        if self._status_error:
+            self._status_label.setText(
+                tr("Ошибка") + ": " + readable_error(self._status_error)
+            )
             return
         total = self._comparison.total
         if not total:
@@ -846,8 +851,9 @@ class NsiTabPage(QWidget):
     def report_error(self, message: str) -> None:
         """Показать ошибку и в строке вкладки, и в статусной строке панели."""
 
-        text = tr("Ошибка") + ": " + message
-        self._status_text = text
+        self._status_error = message
+        self._status_text = ""
+        text = tr("Ошибка") + ": " + readable_error(message)
         self._status_label.setText(text)
         self._host.show_status(text)
 
