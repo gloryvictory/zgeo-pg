@@ -559,19 +559,30 @@ class NsiSide(QWidget):
         self._conn_combo.addItems(names)
         self._conn_combo.blockSignals(False)
 
-        # Пробуем предпочтительное соединение, затем остальные: сторона
-        # должна открываться на рабочей базе, а не на первом пункте списка.
-        for name in ([preferred] if preferred else []) + [
+        # Сначала предпочтительное соединение, затем остальные: сторона должна
+        # открыться на базе с таблицами, а не на первом пункте списка.
+        candidates = ([preferred] if preferred else []) + [
             name for name in names if name != preferred
-        ]:
+        ]
+        fallback = ""
+        for name in candidates:
             self._conn_combo.blockSignals(True)
             self._conn_combo.setCurrentIndex(names.index(name))
             self._conn_combo.blockSignals(False)
             # Автоподключение не показывает модальных окон: ошибка видна по
             # красному кружку и в статусной строке.
             self._on_connection_changed(silent=True)
-            if self.is_connected():
+            if not self.is_connected():
+                continue
+            if self._table_combo.count():
                 return
+            # Соединение открылось, но читать нечего: запомним и поищем лучше.
+            fallback = fallback or name
+        if fallback:
+            self._conn_combo.blockSignals(True)
+            self._conn_combo.setCurrentIndex(names.index(fallback))
+            self._conn_combo.blockSignals(False)
+            self._on_connection_changed(silent=True)
 
     def _on_connection_changed(self, *_args, silent: bool = False) -> None:
         """Открыть выбранное соединение и заполнить список таблиц.
