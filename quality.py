@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Sequence
+from typing import List, Optional, Sequence, Tuple
 
 from qgis.PyQt.QtCore import QThread, pyqtSignal
 from qgis.PyQt.QtSql import QSqlQuery
@@ -275,10 +275,229 @@ QUALITY_CHECKS: List[QualityCheck] = [
 ]
 
 
-def check_by_key(key: str) -> Optional[QualityCheck]:
-    """Найти проверку по её ключу."""
+@dataclass(frozen=True)
+class AttributeCheck:
+    """Описание одной проверки качества атрибутивных данных.
+
+    Проверка работает по столбцам таблицы, подходящим под ``kind``:
+    ``text``, ``numeric``, ``date`` или ``all``. Режим определяет, как
+    строится запрос: ``or`` объединяет условия по столбцам, ``per_column``
+    считает каждый столбец отдельно (нужно для статистики), ``group``
+    группирует строки по всем атрибутивным столбцам.
+    """
+
+    key: str
+    title: str
+    summary: str
+    description: str
+    fix: str
+    kind: str = "text"
+    mode: str = "or"
+    condition: str = ""
+
+
+MODE_OR = "or"
+MODE_PER_COLUMN = "per_column"
+MODE_GROUP = "group"
+
+ATTRIBUTE_CHECKS: List[AttributeCheck] = [
+    AttributeCheck(
+        key="attr_null_values",
+        title="Пустые значения NULL",
+        summary="В атрибутивных столбцах встречаются значения NULL.",
+        description=(
+            "Проверка считает объекты, у которых хотя бы один атрибутивный "
+            "столбец (все столбцы, кроме геометрического) не заполнен. Значения "
+            "NULL ломают фильтры, соединения и расчёт сводок: строка выпадает "
+            "из выборок «WHERE поле = значение» и из подсчёта сумм и средних."
+        ),
+        fix=(
+            "Заполнить обязательные поля или запретить пустые значения "
+            "ограничением ALTER TABLE ... ALTER COLUMN ... SET NOT NULL."
+        ),
+        kind="all",
+        condition="{col} IS NULL",
+    ),
+    AttributeCheck(
+        key="attr_empty_strings",
+        title="Пустые строки",
+        summary="В текстовых столбцах есть значения из пробелов или пустые строки.",
+        description=(
+            "Проверка ищет строки, где текстовое поле пустое или состоит только "
+            "из пробелов. От NULL такие значения не отличаются для "
+            "пользователя, но ведут себя иначе в запросах: IS NULL их не "
+            "находит, а сортировка и группировка дают отдельную группу."
+        ),
+        fix=(
+            "Заменить пустые строки на NULL или на осмысленное значение: "
+            "UPDATE ... SET поле = NULL WHERE btrim(поле) = ''."
+        ),
+        kind="text",
+        condition="btrim({col}) = ''",
+    ),
+    AttributeCheck(
+        key="attr_whitespace_padding",
+        title="Пробелы по краям значений",
+        summary="Текстовые значения начинаются или заканчиваются пробелом.",
+        description=(
+            "Проверка ищет значения с ведущими или замыкающими пробелами, "
+            "табуляцией и переводами строк. Такие значения не совпадают при "
+            "сравнении и соединении: «Москва» и «Москва » считаются разными, "
+            "из-за чего ломаются справочники, фильтры и связи между слоями."
+        ),
+        fix=(
+            "Очистить значения от лишних пробелов: UPDATE ... SET поле = "
+            "btrim(поле)."
+        ),
+        kind="text",
+        condition="{col} <> btrim({col})",
+    ),
+    AttributeCheck(
+        key="attr_double_spaces",
+        title="Двойные пробелы внутри значений",
+        summary="В тексте встречаются два и более пробела подряд.",
+        description=(
+            "Проверка находит значения, внутри которых стоят два и более "
+            "пробела подряд. Обычно это следствие ручного ввода или склейки "
+            "полей, и такие записи не находятся поиском по точному значению и "
+            "выглядят неряшливо в отчётах."
+        ),
+        fix=(
+            "Заменить повторяющиеся пробелы одним: UPDATE ... SET поле = "
+            "regexp_replace(поле, '\\s+', ' ', 'g')."
+        ),
+        kind="text",
+        condition="{col} LIKE '%  %'",
+    ),
+    AttributeCheck(
+        key="attr_duplicate_rows",
+        title="Дублирующиеся записи",
+        summary="Полностью совпадающие атрибутивные записи в таблице.",
+        description=(
+            "Проверка группирует объекты по всем атрибутивным столбцам и "
+            "считает лишние копии. Полные дубликаты завышают статистику, "
+            "приводят к двойным подписям на карте и мешают объединению данных "
+            "из разных источников."
+        ),
+        fix=(
+            "Найти повторы запросом SELECT столбцы, count(*) ... GROUP BY "
+            "столбцы HAVING count(*) > 1 и удалить лишние строки."
+        ),
+        kind="all",
+        mode=MODE_GROUP,
+    ),
+    AttributeCheck(
+        key="attr_numeric_text",
+        title="Числа, записанные как текст",
+        summary="В текстовом столбце значение целиком состоит из числа.",
+        description=(
+            "Проверка ищет текстовые столбцы, где значение является числом. "
+            "Обычно так выглядят поля, которые нужно хранить числом: "
+            "идентификаторы, площади, коды. Из-за текстового типа сравнение идёт "
+            "по алфавиту («10» меньше «9») и невозможны арифметические операции."
+        ),
+        fix=(
+            "Изменить тип столбца с приведением значений: ALTER TABLE ... "
+            "ALTER COLUMN ... TYPE numeric USING поле::numeric."
+        ),
+        kind="text",
+        condition=(
+            "{col} ~ '^[[:space:]]*[+-]?[0-9]+([.,][0-9]+)?[[:space:]]*$'"
+        ),
+    ),
+    AttributeCheck(
+        key="attr_control_chars",
+        title="Управляющие и невидимые символы",
+        summary="В тексте есть табуляция, переводы строк и другие служебные символы.",
+        description=(
+            "Проверка ищет управляющие символы (табуляция, перевод строки, "
+            "возврат каретки) и невидимые символы в текстовых значениях. Они "
+            "портят вёрстку подписей и отчётов, ломают разбор CSV и мешают "
+            "сравнению строк."
+        ),
+        fix=(
+            "Удалить служебные символы: UPDATE ... SET поле = "
+            "regexp_replace(поле, '[[:cntrl:]]', '', 'g')."
+        ),
+        kind="text",
+        condition="{col} ~ '[[:cntrl:]]'",
+    ),
+    AttributeCheck(
+        key="attr_outlier_length",
+        title="Аномальная длина текста",
+        summary="Длина значения резко отличается от средней по столбцу.",
+        description=(
+            "Для каждого текстового столбца считается средняя длина значения и "
+            "стандартное отклонение, затем ищутся значения длиннее среднего "
+            "более чем на три отклонения. Так находятся обрезанные поля "
+            "справочника и, наоборот, значения со склеенным или лишним текстом."
+        ),
+        fix=(
+            "Просмотреть найденные значения и привести их к длине, принятой в "
+            "справочнике: SELECT * FROM ... ORDER BY length(поле) DESC."
+        ),
+        kind="text",
+        mode=MODE_PER_COLUMN,
+        condition=(
+            "WITH s AS (SELECT avg(length({col})) AS a,\n"
+            "  coalesce(stddev_pop(length({col})), 0) AS d FROM {table})\n"
+            "SELECT count(*) FROM {table}, s\n"
+            "WHERE {col} IS NOT NULL AND length({col}) > s.a + 3 * s.d"
+        ),
+    ),
+    AttributeCheck(
+        key="attr_numeric_outliers",
+        title="Выбросы в числовых столбцах",
+        summary="Числовое значение выходит за три стандартных отклонения.",
+        description=(
+            "Для каждого числового столбца считается среднее и стандартное "
+            "отклонение, затем ищутся значения вне диапазона «среднее ± 3 "
+            "отклонения». Обычно это опечатки в разрядах и нулевые значения "
+            "вместо пропусков; они сильно искажают суммы и средние в сводках."
+        ),
+        fix=(
+            "Проверить найденные значения и исправить или заменить на NULL: "
+            "SELECT * FROM ... ORDER BY поле DESC LIMIT 100."
+        ),
+        kind="numeric",
+        mode=MODE_PER_COLUMN,
+        condition=(
+            "WITH s AS (SELECT avg({col}) AS a,\n"
+            "  coalesce(stddev_pop({col}), 0) AS d FROM {table})\n"
+            "SELECT count(*) FROM {table}, s\n"
+            "WHERE {col} IS NOT NULL\n"
+            "  AND ({col} > s.a + 3 * s.d OR {col} < s.a - 3 * s.d)"
+        ),
+    ),
+    AttributeCheck(
+        key="attr_date_range",
+        title="Даты вне разумного диапазона",
+        summary="Дата раньше 1900 года или позже чем через год от текущей.",
+        description=(
+            "Проверка ищет значения дат и отметок времени раньше 1900 года и "
+            "позже года от текущей даты. Так выглядят даты, записанные в "
+            "неверном формате, и результат подстановки нулевой даты. Такие "
+            "значения ломают временные фильтры и хронологию в отчётах."
+        ),
+        fix=(
+            "Исправить даты вручную или заменить невозможные значения на NULL: "
+            "UPDATE ... SET поле = NULL WHERE поле < DATE '1900-01-01'."
+        ),
+        kind="date",
+        condition=(
+            "{col} < DATE '1900-01-01' OR {col} > now() + interval '1 year'"
+        ),
+    ),
+]
+
+
+def check_by_key(key: str):
+    """Найти проверку (пространственную или атрибутивную) по её ключу."""
 
     for check in QUALITY_CHECKS:
+        if check.key == key:
+            return check
+    for check in ATTRIBUTE_CHECKS:
         if check.key == key:
             return check
     return None
@@ -329,6 +548,211 @@ def run_check(db, table: SpatialTable, check: QualityCheck) -> Optional[int]:
         return int(query.value(0) or 0)
     except (TypeError, ValueError):
         return 0
+
+
+COLUMN_SQL = (
+    "SELECT a.attname, t.typname "
+    "FROM pg_catalog.pg_attribute a "
+    "JOIN pg_catalog.pg_class c ON c.oid = a.attrelid "
+    "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+    "JOIN pg_catalog.pg_type t ON t.oid = a.atttypid "
+    "WHERE n.nspname = ? AND c.relname = ? AND a.attnum > 0 AND NOT a.attisdropped "
+    "  AND NOT EXISTS ("
+    "    SELECT 1 FROM pg_catalog.pg_index i "
+    "    WHERE i.indrelid = c.oid AND i.indisprimary "
+    "      AND a.attnum = ANY (i.indkey)"
+    "  )"
+)
+
+TEXT_TYPES = (
+    "varchar",
+    "bpchar",
+    "text",
+    "citext",
+    "name",
+    "char",
+)
+
+NUMERIC_TYPES = (
+    "int2",
+    "int4",
+    "int8",
+    "numeric",
+    "float4",
+    "float8",
+    "money",
+)
+
+DATE_TYPES = ("date", "timestamp", "timestamptz")
+
+# Служебные типы PostGIS: проверять их как атрибуты не имеет смысла.
+SPATIAL_TYPES = ("geometry", "geography", "raster", "box2d", "box3d")
+
+
+def column_kind(type_name: str) -> Optional[str]:
+    """Отнести тип PostgreSQL к текстовым, числовым или датам."""
+
+    name = (type_name or "").lower()
+    if name in TEXT_TYPES:
+        return "text"
+    if name in NUMERIC_TYPES:
+        return "numeric"
+    if name in DATE_TYPES:
+        return "date"
+    return None
+
+
+def fetch_attribute_columns(db, table: SpatialTable) -> List[Tuple[str, str]]:
+    """Вернуть атрибутивные столбцы таблицы и их вид: (имя, вид)."""
+
+    query = QSqlQuery(db)
+    query.prepare(COLUMN_SQL)
+    query.addBindValue(table.schema)
+    query.addBindValue(table.name)
+    columns: List[Tuple[str, str]] = []
+    if not query.exec():
+        return columns
+    while query.next():
+        name = str(query.value(0) or "")
+        type_name = str(query.value(1) or "")
+        if not name or type_name.lower() in SPATIAL_TYPES:
+            continue
+        kind = column_kind(type_name)
+        if kind:
+            columns.append((name, kind))
+    return columns
+
+
+def build_attribute_sql(
+    check: AttributeCheck,
+    table: SpatialTable,
+    columns: Sequence[Tuple[str, str]],
+) -> Optional[str]:
+    """Собрать SQL проверки атрибутов; None — проверка не применима."""
+
+    usable = [
+        (name, kind)
+        for name, kind in columns
+        if check.kind == "all" or kind == check.kind
+    ]
+    if not usable:
+        return None
+
+    def render(template: str, column: str) -> str:
+        return template.format(
+            col=quote_ident(column),
+            table=table.qualified,
+        )
+
+    if check.mode == MODE_GROUP:
+        names = ", ".join(quote_ident(name) for name, _kind in usable)
+        return (
+            "SELECT COALESCE(sum(n - 1), 0) FROM (\n"
+            "  SELECT count(*) AS n FROM {table}\n"
+            "  GROUP BY {columns} HAVING count(*) > 1\n"
+            ") AS duplicates"
+        ).format(table=table.qualified, columns=names)
+
+    if check.mode == MODE_PER_COLUMN:
+        parts = [
+            "(" + render(check.condition, name) + ")" for name, _kind in usable
+        ]
+        return (
+            "SELECT COALESCE(sum(c), 0) FROM ("
+            + " UNION ALL ".join(parts)
+            + ") AS t(c)"
+        )
+
+    conditions = " OR ".join(
+        "(" + render(check.condition, name) + ")" for name, _kind in usable
+    )
+    return "SELECT count(*) FROM {table} WHERE {conditions}".format(
+        table=table.qualified,
+        conditions=conditions,
+    )
+
+
+def run_attribute_check(
+    db,
+    table: SpatialTable,
+    check: AttributeCheck,
+    columns: Sequence[Tuple[str, str]],
+) -> Optional[int]:
+    """Выполнить проверку атрибутов и вернуть число проблемных объектов."""
+
+    sql = build_attribute_sql(check, table, columns)
+    if sql is None:
+        return None
+    query = QSqlQuery(db)
+    if not query.exec(sql):
+        raise RuntimeError(query.lastError().text() or tr("Ошибка запроса"))
+    if not query.next():
+        return 0
+    try:
+        return int(query.value(0) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+class AttributeTask(QThread):
+    """Фоновый поток проверок качества атрибутивных данных."""
+
+    CONNECTION_TAG = "attribute"
+
+    check_started = pyqtSignal(str)  # название проверки (строка-источник)
+    check_done = pyqtSignal(str, str, object, str)  # ключ, таблица, итог, ошибка
+    progress = pyqtSignal(int, int)  # (готово, всего)
+    finished_all = pyqtSignal(bool, str)  # (отменено, текст ошибки)
+
+    def __init__(
+        self,
+        connection: PGConnection,
+        tables: Sequence[SpatialTable],
+        checks: Sequence[AttributeCheck],
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._connection = connection
+        self._tables = list(tables)
+        self._checks = list(checks)
+        self._cancel_requested = False
+
+    def request_cancel(self) -> None:
+        """Попросить поток остановиться после текущего запроса."""
+        self._cancel_requested = True
+
+    def run(self) -> None:
+        db = None
+        try:
+            db = open_connection(self._connection, self.CONNECTION_TAG)
+            total = len(self._checks) * len(self._tables)
+            done = 0
+            for check in self._checks:
+                if self._cancel_requested:
+                    self.finished_all.emit(True, "")
+                    return
+                self.check_started.emit(check.title)
+                for table in self._tables:
+                    if self._cancel_requested:
+                        self.finished_all.emit(True, "")
+                        return
+                    count = None
+                    error = ""
+                    try:
+                        columns = fetch_attribute_columns(db, table)
+                        count = run_attribute_check(db, table, check, columns)
+                    except Exception as exc:  # noqa: BLE001
+                        error = str(exc)
+                    self.check_done.emit(check.key, table.full_name, count, error)
+                    done += 1
+                    self.progress.emit(done, total)
+            self.finished_all.emit(False, "")
+        except Exception as exc:  # noqa: BLE001
+            self.finished_all.emit(False, str(exc))
+        finally:
+            if db is not None:
+                close_connection(self._connection, self.CONNECTION_TAG)
+                db = None
 
 
 class QualityTask(QThread):

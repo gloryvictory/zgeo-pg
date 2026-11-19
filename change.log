@@ -3,6 +3,39 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.21.0] - 2026-11-18
+
+### Added
+
+- "Attribute data quality" tab with ten checks: NULL values, empty strings,
+  leading and trailing spaces, double spaces, duplicate records, numbers stored
+  as text, control characters, abnormal text length, outliers in numeric
+  columns and dates out of the reasonable range.
+- `quality.py` declares them as `AttributeCheck` records. A check names the
+  column kind it needs (text, numeric, date or all), and the SQL is built from
+  the columns reported by `fetch_attribute_columns()`, so one check covers
+  every suitable column of a table.
+- `AttributeTask` runs the selected checks over all loaded tables in a
+  background thread on its own connection, with the same progress, abort and
+  export behaviour as the spatial tab.
+
+### Changed
+
+- Both quality tabs are now `QualityTabPage` instances created by
+  `_add_quality_page()`, so the check list, descriptions, results table,
+  translations and the Excel/HTML export exist once. The panel gained
+  `begin_progress()`, `progress_update()`, `set_progress_text()`,
+  `set_progress_visible()` and `end_progress()` for the shared status bar.
+- Only one quality run can be active at a time; starting a second one shows
+  "Wait until the running checks finish".
+
+### Fixed
+
+- The attribute column query ignored primary keys, so an identity column was
+  counted as a NULL-filled attribute; primary key columns are skipped now.
+- Per-column checks wrapped their subqueries without a column alias and failed
+  with a SQL error.
+
 ## [0.20.0] - 2026-11-18
 
 ### Added

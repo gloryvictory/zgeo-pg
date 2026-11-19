@@ -399,6 +399,193 @@ EN_TRANSLATIONS = {
         "\"Create all spatial indexes\" button on the \"Tables\" tab."
     ),
 
+    # Качество атрибутивных данных
+    "Качество атрибутивных данных": "Attribute data quality",
+    "Дождитесь окончания текущих проверок": (
+        "Wait until the running checks finish"
+    ),
+    "Пустые значения NULL": "NULL values",
+    "В атрибутивных столбцах встречаются значения NULL.": (
+        "Attribute columns contain NULL values."
+    ),
+    "Проверка считает объекты, у которых хотя бы один атрибутивный "
+    "столбец (все столбцы, кроме геометрического) не заполнен. Значения "
+    "NULL ломают фильтры, соединения и расчёт сводок: строка выпадает "
+    "из выборок «WHERE поле = значение» и из подсчёта сумм и средних.": (
+        "The check counts features where at least one attribute column (every "
+        "column except the geometry one) is empty. NULL values break filters, "
+        "joins and summaries: the row drops out of \"WHERE field = value\" "
+        "selections and out of sum and average calculations."
+    ),
+    "Заполнить обязательные поля или запретить пустые значения "
+    "ограничением ALTER TABLE ... ALTER COLUMN ... SET NOT NULL.": (
+        "Fill in the required fields or forbid empty values with ALTER TABLE "
+        "... ALTER COLUMN ... SET NOT NULL."
+    ),
+    "Пустые строки": "Empty strings",
+    "В текстовых столбцах есть значения из пробелов или пустые строки.": (
+        "Text columns contain empty strings or strings of spaces."
+    ),
+    "Проверка ищет строки, где текстовое поле пустое или состоит только "
+    "из пробелов. От NULL такие значения не отличаются для "
+    "пользователя, но ведут себя иначе в запросах: IS NULL их не "
+    "находит, а сортировка и группировка дают отдельную группу.": (
+        "The check looks for rows where a text field is empty or contains only "
+        "spaces. To the user such values look like NULL, but they behave "
+        "differently in queries: IS NULL does not find them and sorting and "
+        "grouping put them into a separate group."
+    ),
+    "Заменить пустые строки на NULL или на осмысленное значение: "
+    "UPDATE ... SET поле = NULL WHERE btrim(поле) = ''.": (
+        "Replace the empty strings with NULL or with a meaningful value: "
+        "UPDATE ... SET field = NULL WHERE btrim(field) = ''."
+    ),
+    "Пробелы по краям значений": "Leading and trailing spaces",
+    "Текстовые значения начинаются или заканчиваются пробелом.": (
+        "Text values start or end with a space."
+    ),
+    "Проверка ищет значения с ведущими или замыкающими пробелами, "
+    "табуляцией и переводами строк. Такие значения не совпадают при "
+    "сравнении и соединении: «Москва» и «Москва » считаются разными, "
+    "из-за чего ломаются справочники, фильтры и связи между слоями.": (
+        "The check looks for values with leading or trailing spaces, tabs and "
+        "line breaks. Such values do not match on comparison and join: "
+        "\"Moscow\" and \"Moscow \" count as different, which breaks "
+        "reference lists, filters and links between layers."
+    ),
+    "Очистить значения от лишних пробелов: UPDATE ... SET поле = "
+    "btrim(поле).": (
+        "Strip the extra spaces: UPDATE ... SET field = btrim(field)."
+    ),
+    "Двойные пробелы внутри значений": "Double spaces inside values",
+    "В тексте встречаются два и более пробела подряд.": (
+        "The text contains two or more spaces in a row."
+    ),
+    "Проверка находит значения, внутри которых стоят два и более "
+    "пробела подряд. Обычно это следствие ручного ввода или склейки "
+    "полей, и такие записи не находятся поиском по точному значению и "
+    "выглядят неряшливо в отчётах.": (
+        "The check finds values with two or more spaces in a row inside them. "
+        "This usually comes from manual input or from concatenated fields, and "
+        "such records are not found by an exact match search and look untidy "
+        "in reports."
+    ),
+    "Заменить повторяющиеся пробелы одним: UPDATE ... SET поле = "
+    "regexp_replace(поле, '\\s+', ' ', 'g').": (
+        "Replace the repeated spaces with one: UPDATE ... SET field = "
+        "regexp_replace(field, '\\s+', ' ', 'g')."
+    ),
+    "Дублирующиеся записи": "Duplicate records",
+    "Полностью совпадающие атрибутивные записи в таблице.": (
+        "Attribute records in the table that match completely."
+    ),
+    "Проверка группирует объекты по всем атрибутивным столбцам и "
+    "считает лишние копии. Полные дубликаты завышают статистику, "
+    "приводят к двойным подписям на карте и мешают объединению данных "
+    "из разных источников.": (
+        "The check groups features by all attribute columns and counts the "
+        "extra copies. Complete duplicates inflate statistics, double the map "
+        "labels and get in the way when data from different sources is merged."
+    ),
+    "Найти повторы запросом SELECT столбцы, count(*) ... GROUP BY "
+    "столбцы HAVING count(*) > 1 и удалить лишние строки.": (
+        "Find the repeats with SELECT columns, count(*) ... GROUP BY columns "
+        "HAVING count(*) > 1 and delete the extra rows."
+    ),
+    "Числа, записанные как текст": "Numbers stored as text",
+    "В текстовом столбце значение целиком состоит из числа.": (
+        "A text column holds values that are entirely numeric."
+    ),
+    "Проверка ищет текстовые столбцы, где значение является числом. "
+    "Обычно так выглядят поля, которые нужно хранить числом: "
+    "идентификаторы, площади, коды. Из-за текстового типа сравнение идёт "
+    "по алфавиту («10» меньше «9») и невозможны арифметические операции.": (
+        "The check looks for text columns whose values are numbers. Fields "
+        "that should be stored as numbers look like this: identifiers, areas, "
+        "codes. Because of the text type the comparison is alphabetical "
+        "(\"10\" is less than \"9\") and arithmetic operations are "
+        "impossible."
+    ),
+    "Изменить тип столбца с приведением значений: ALTER TABLE ... "
+    "ALTER COLUMN ... TYPE numeric USING поле::numeric.": (
+        "Change the column type converting the values: ALTER TABLE ... "
+        "ALTER COLUMN ... TYPE numeric USING field::numeric."
+    ),
+    "Управляющие и невидимые символы": "Control and invisible characters",
+    "В тексте есть табуляция, переводы строк и другие служебные символы.": (
+        "The text contains tabs, line breaks and other service characters."
+    ),
+    "Проверка ищет управляющие символы (табуляция, перевод строки, "
+    "возврат каретки) и невидимые символы в текстовых значениях. Они "
+    "портят вёрстку подписей и отчётов, ломают разбор CSV и мешают "
+    "сравнению строк.": (
+        "The check looks for control characters (tabs, line feeds, carriage "
+        "returns) and invisible characters in text values. They ruin the "
+        "layout of labels and reports, break CSV parsing and get in the way of "
+        "string comparison."
+    ),
+    "Удалить служебные символы: UPDATE ... SET поле = "
+    "regexp_replace(поле, '[[:cntrl:]]', '', 'g').": (
+        "Remove the service characters: UPDATE ... SET field = "
+        "regexp_replace(field, '[[:cntrl:]]', '', 'g')."
+    ),
+    "Аномальная длина текста": "Abnormal text length",
+    "Длина значения резко отличается от средней по столбцу.": (
+        "The value length differs sharply from the column average."
+    ),
+    "Для каждого текстового столбца считается средняя длина значения и "
+    "стандартное отклонение, затем ищутся значения длиннее среднего "
+    "более чем на три отклонения. Так находятся обрезанные поля "
+    "справочника и, наоборот, значения со склеенным или лишним текстом.": (
+        "For every text column the average value length and the standard "
+        "deviation are calculated, then the values longer than the average by "
+        "more than three deviations are searched for. This finds truncated "
+        "reference fields and, the other way round, values with glued or extra "
+        "text."
+    ),
+    "Просмотреть найденные значения и привести их к длине, принятой в "
+    "справочнике: SELECT * FROM ... ORDER BY length(поле) DESC.": (
+        "Review the found values and bring them to the length accepted in the "
+        "reference list: SELECT * FROM ... ORDER BY length(field) DESC."
+    ),
+    "Выбросы в числовых столбцах": "Outliers in numeric columns",
+    "Числовое значение выходит за три стандартных отклонения.": (
+        "A numeric value falls outside three standard deviations."
+    ),
+    "Для каждого числового столбца считается среднее и стандартное "
+    "отклонение, затем ищутся значения вне диапазона «среднее ± 3 "
+    "отклонения». Обычно это опечатки в разрядах и нулевые значения "
+    "вместо пропусков; они сильно искажают суммы и средние в сводках.": (
+        "For every numeric column the average and the standard deviation are "
+        "calculated, then the values outside the \"average +/- 3 deviations\" "
+        "range are searched for. Usually these are typos in digits and zeros "
+        "used instead of empty values; they distort sums and averages in "
+        "summaries a lot."
+    ),
+    "Проверить найденные значения и исправить или заменить на NULL: "
+    "SELECT * FROM ... ORDER BY поле DESC LIMIT 100.": (
+        "Review the found values and fix them or replace them with NULL: "
+        "SELECT * FROM ... ORDER BY field DESC LIMIT 100."
+    ),
+    "Даты вне разумного диапазона": "Dates out of the reasonable range",
+    "Дата раньше 1900 года или позже чем через год от текущей.": (
+        "The date is before 1900 or later than a year from today."
+    ),
+    "Проверка ищет значения дат и отметок времени раньше 1900 года и "
+    "позже года от текущей даты. Так выглядят даты, записанные в "
+    "неверном формате, и результат подстановки нулевой даты. Такие "
+    "значения ломают временные фильтры и хронологию в отчётах.": (
+        "The check looks for date and timestamp values before 1900 and later "
+        "than a year from today. Dates written in a wrong format and the "
+        "result of a zero date substitution look like this. Such values break "
+        "time filters and the chronology in reports."
+    ),
+    "Исправить даты вручную или заменить невозможные значения на NULL: "
+    "UPDATE ... SET поле = NULL WHERE поле < DATE '1900-01-01'.": (
+        "Fix the dates manually or replace the impossible values with NULL: "
+        "UPDATE ... SET field = NULL WHERE field < DATE '1900-01-01'."
+    ),
+
     # Плагин и панель
     "ZGeo-PG-Каталог": "ZGeo-PG Catalog",
     "ZGeo-PG-Каталог — каталог пространственных данных PostGIS": (
