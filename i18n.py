@@ -612,6 +612,15 @@ EN_TRANSLATIONS = {
     "Подключено, но доступных таблиц нет": (
         "Connected, but no tables are available"
     ),
+    "Подключено, но нет прав на чтение таблиц: {} (таблиц в базе: {})": (
+        "Connected, but no privilege to read tables: {} (tables in the database: {})"
+    ),
+    "Подключено, но в базе нет таблиц": (
+        "Connected, but the database has no tables"
+    ),
+    "Таблиц в базе: {}, доступно для чтения: {}": (
+        "Tables in the database: {}, readable: {}"
+    ),
     "Нет доступа к таблице": "No access to the table",
     "Дождитесь окончания текущих проверок": (
         "Wait until the running checks finish"

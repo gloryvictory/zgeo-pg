@@ -51,16 +51,27 @@ COLUMNS_SQL = (
 )
 
 
-def list_tables(db) -> List[Tuple[str, str]]:
-    """Таблицы и представления, доступные пользователю на чтение.
+COUNT_SQL = (
+    "SELECT count(*) "
+    "FROM pg_catalog.pg_class c "
+    "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+    "WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f') "
+    "  AND n.nspname NOT IN ('pg_catalog', 'information_schema') "
+    "  AND n.nspname NOT LIKE 'pg\\_toast%' "
+    "  AND n.nspname NOT LIKE 'pg\\_temp%'"
+)
 
-    Таблицы без права SELECT не попадают в список: иначе выбор такой
-    таблицы в интерфейсе заканчивался ошибкой «нет доступа к таблице».
-    """
+UNFILTERED_TABLES_SQL = (
+    COUNT_SQL.replace("count(*)", "n.nspname, c.relname")
+    + " ORDER BY n.nspname, c.relname"
+)
 
-    query = QSqlQuery(db)
+
+def _read_tables(query, sql: str) -> List[Tuple[str, str]]:
+    """Выполнить запрос списка таблиц и собрать пары (схема, имя)."""
+
     tables: List[Tuple[str, str]] = []
-    if not query.exec(TABLES_SQL):
+    if not query.exec(sql):
         raise RuntimeError(query_error(query))
     while query.next():
         schema = str(query.value(0) or "")
@@ -68,6 +79,33 @@ def list_tables(db) -> List[Tuple[str, str]]:
         if schema and name:
             tables.append((schema, name))
     return tables
+
+
+
+
+def list_tables(db) -> Tuple[List[Tuple[str, str]], int, int]:
+    """Таблицы для выбора в справочнике и счётчики для диагностики.
+
+    Возвращает ``(таблицы, всего_в_базе, читаемых)``. Сначала берутся только
+    читаемые таблицы: выбор таблицы без права SELECT всё равно закончился бы
+    ошибкой. Если читаемых нет, а таблицы в базе есть, список отдаётся целиком
+    — пустой выпадающий список не объясняет причину, а ошибка по конкретной
+    таблице объясняет.
+    """
+
+    readable = _read_tables(QSqlQuery(db), TABLES_SQL)
+    if readable:
+        return readable, len(readable), len(readable)
+    query = QSqlQuery(db)
+    total = 0
+    if query.exec(COUNT_SQL) and query.next():
+        try:
+            total = int(query.value(0) or 0)
+        except (TypeError, ValueError):
+            total = 0
+    if not total:
+        return [], 0, 0
+    return _read_tables(QSqlQuery(db), UNFILTERED_TABLES_SQL), total, 0
 
 
 # Пометка ошибки прав доступа: текст собирается при показе, чтобы он

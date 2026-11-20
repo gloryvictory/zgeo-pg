@@ -466,6 +466,8 @@ class NsiSide(QWidget):
         self._db = None
         self._conn = None
         self._values: List[str] = []
+        self._connected = False
+        self._conn_tip = ""
         self._build()
 
     def _build(self) -> None:
@@ -488,15 +490,18 @@ class NsiSide(QWidget):
         self._column_label = QLabel()
         # Кружок состояния соединения: зелёный — подключено, красный — нет.
         self._conn_dot = QLabel()
-        self._conn_dot.setFixedSize(10, 10)
+        self._conn_dot.setFixedSize(12, 12)
         self._conn_dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Колонка под точку уже, чем остальные, чтобы она стояла вплотную
+        # к выпадающему списку.
+        form.setColumnMinimumWidth(1, 14)
         form.addWidget(self._conn_label, 0, 0)
-        form.addWidget(self._conn_combo, 0, 1)
-        form.addWidget(self._conn_dot, 0, 2)
+        form.addWidget(self._conn_dot, 0, 1)
+        form.addWidget(self._conn_combo, 0, 2)
         form.addWidget(self._table_label, 1, 0)
-        form.addWidget(self._table_combo, 1, 1, 1, 2)
+        form.addWidget(self._table_combo, 1, 2)
         form.addWidget(self._column_label, 2, 0)
-        form.addWidget(self._column_combo, 2, 1, 1, 2)
+        form.addWidget(self._column_combo, 2, 2)
         layout.addLayout(form)
         self._set_connected(False, tr("Не подключено"))
 
@@ -519,6 +524,8 @@ class NsiSide(QWidget):
     def _set_connected(self, connected: bool, tooltip: str = "") -> None:
         """Зелёный кружок при успешном подключении, красный — при ошибке."""
 
+        self._connected = connected
+        self._conn_tip = tooltip
         color = "#2e9e4f" if connected else "#c0392b"
         self._conn_dot.setStyleSheet(
             "background-color: {}; border-radius: 5px;".format(color)
@@ -535,6 +542,7 @@ class NsiSide(QWidget):
         self._conn_label.setText(tr("Соединение"))
         self._table_label.setText(tr("Таблица"))
         self._column_label.setText(tr("Поле"))
+        self._set_connected(self._connected, self._conn_tip)
         self._export_button.setText(tr("Экспорт"))
         self._export_button.setToolTip(tr("Экспорт списка значений"))
         self._update_count()
@@ -617,7 +625,7 @@ class NsiSide(QWidget):
             return
         try:
             db = open_connection(conn, self._tag)
-            tables = list_tables(db)
+            tables, total, readable = list_tables(db)
         except Exception as error:  # noqa: BLE001
             self._close_connection()
             message = str(error)
@@ -633,7 +641,7 @@ class NsiSide(QWidget):
         self._set_connected(True, conn.qualified + " / " + name)
         for schema, table in tables:
             self._table_combo.addItem(schema + "." + table, (schema, table))
-        self._host.show_connected(name, len(tables))
+        self._host.show_connected(name, len(tables), total, readable)
 
     def _on_table_changed(self, *_args) -> None:
         self._column_combo.clear()
@@ -862,7 +870,7 @@ class NsiTabPage(QWidget):
             if label == "connected":
                 text = tr("Подключено") + ": {} ({})".format(kind[1], kind[2])
             elif label == "empty":
-                text = tr("Подключено, но доступных таблиц нет") + ": " + kind[1]
+                text = self._empty_text(kind[1], kind[2] if len(kind) > 2 else 0)
             elif label == "none":
                 text = tr("Соединение не выбрано")
             else:
@@ -876,6 +884,15 @@ class NsiTabPage(QWidget):
         self._status_label.setText(
             tr("Всего уникальных значений в сравнении: {}").format(total)
         )
+
+    def _empty_text(self, name: str, total: int) -> str:
+        """Объяснить пустой список таблиц: нет прав или нет таблиц."""
+
+        if total:
+            return tr(
+                "Подключено, но нет прав на чтение таблиц: {} (таблиц в базе: {})"
+            ).format(name, total)
+        return tr("Подключено, но в базе нет таблиц") + ": " + name
 
     # --------------------------------------------------------------- списки
     def _on_menu(self, position) -> None:
@@ -954,10 +971,15 @@ class NsiTabPage(QWidget):
         self._status_label.setText(text)
         self._host.show_status(text)
 
-    def show_connected(self, name: str, count: int) -> None:
+    def show_connected(
+        self, name: str, count: int, total: int = 0, readable: int = 0
+    ) -> None:
         """Отметить успешное подключение стороны с числом таблиц."""
 
-        kind = ("connected", name, count) if count else ("empty", name)
+        if readable:
+            kind = ("connected", name, count)
+        else:
+            kind = ("empty", name, total)
         self._status_error = ""
         self._status_kind = kind
         self._render_status()
@@ -966,9 +988,7 @@ class NsiTabPage(QWidget):
                 tr("Подключено") + ": {} ({})".format(name, count)
             )
         else:
-            self._host.show_status(
-                tr("Подключено, но доступных таблиц нет") + ": " + name
-            )
+            self._host.show_status(self._status_label.text())
 
     def reload_connections(self) -> None:
         self._left.reload_connections()

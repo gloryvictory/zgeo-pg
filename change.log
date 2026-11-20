@@ -3,6 +3,21 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.27.0] - 2026-11-18
+
+### Changed
+
+- The state dot of both reference data sides sits left of the connection list,
+  in its own narrow grid column, so it reads as part of the combo box.
+- An empty table list is explained instead of showing
+  "Connected, but no tables are available" for every case:
+  "Connected, but the database has no tables: <name>" when the database is
+  empty, and "Connected, but no privilege to read tables: <name> (tables in the
+  database: N)" when tables exist but the role cannot read them.
+- When nothing is readable, `list_tables()` returns the full list anyway, so
+  the table combo is not empty and picking a table reports the exact privilege
+  error.
+
 ## [0.26.0] - 2026-11-18
 
 ### Changed
