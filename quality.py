@@ -294,6 +294,8 @@ class AttributeCheck:
     kind: str = "text"
     mode: str = "or"
     condition: str = ""
+    # Проверка по умолчанию выключена: она слишком долгая для обычного прогона.
+    enabled_by_default: bool = True
 
 
 MODE_OR = "or"
@@ -491,7 +493,7 @@ ATTRIBUTE_CHECKS: List[AttributeCheck] = [
     ),
     AttributeCheck(
         key="attr_attribute_duplicates",
-        title="Дубли по атрибутам",
+        title="Дубли по атрибутам ( очень долго! )",
         summary=(
             "Полные дубли строк, дубли составного ключа, совпадения без учёта "
             "регистра и частичные вхождения."
@@ -517,6 +519,7 @@ ATTRIBUTE_CHECKS: List[AttributeCheck] = [
         ),
         kind="all",
         mode=MODE_DUPLICATES,
+        enabled_by_default=False,
     ),
 ]
 

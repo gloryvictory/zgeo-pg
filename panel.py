@@ -253,7 +253,8 @@ class QualityTabPage(QWidget):
         for check in self._checks:
             row = QHBoxLayout()
             box = QCheckBox()
-            box.setChecked(True)
+            # Долгие проверки по умолчанию выключены (см. enabled_by_default).
+            box.setChecked(getattr(check, "enabled_by_default", True))
             self._boxes[check.key] = box
             row.addWidget(box, 1)
             info = QPushButton("i")

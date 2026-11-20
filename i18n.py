@@ -569,7 +569,9 @@ EN_TRANSLATIONS = {
     ),
     "Даты вне разумного диапазона": "Dates out of the reasonable range",
     # Дубли по атрибутам
-    "Дубли по атрибутам": "Attribute duplicates",
+    "Дубли по атрибутам ( очень долго! )": (
+        "Attribute duplicates (very slow!)"
+    ),
     "Полные дубли строк": "Exact duplicate rows",
     "Дубли составного ключа": "Composite key duplicates",
     "Совпадения без учёта регистра и пробелов": (
