@@ -3,6 +3,35 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.30.0] - 2026-11-18
+
+### Added
+
+- Eleventh check on the attribute quality tab, "Attribute duplicates", that
+  unites four kinds of duplicates in one pass:
+  exact duplicate rows, composite key duplicates over the text columns,
+  matches ignoring case and repeated spaces, and partial matches where a value
+  is contained in another one.
+- Partial matches carry the match percentage — the length of the shorter value
+  against the longer one, so "ЯмалоНенецкий автономный окру" inside
+  "ЯмалоНенецкий автономный округ" reports 96.7 %.
+- A double click on the result cell opens a dialog with the detailed list
+  (kind, value, match, percentage) that can be exported to Excel or HTML.
+
+### Changed
+
+- `AttributeCheck` gained the `duplicates` mode; `duplicates_union_sql()`
+  builds the four branches and `duplicate_details()` returns the rows behind
+  the count. `AttributeTask` emits the new `check_details` signal only for
+  checks that can produce such a list.
+- Attribute columns are now returned in declaration order.
+
+### Fixed
+
+- Partial matches were counted once per source row, so a value repeated twice
+  produced two identical pairs; the branch now uses DISTINCT over the trimmed
+  values.
+
 ## [0.29.0] - 2026-11-18
 
 ### Added

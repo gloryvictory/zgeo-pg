@@ -299,6 +299,7 @@ class AttributeCheck:
 MODE_OR = "or"
 MODE_PER_COLUMN = "per_column"
 MODE_GROUP = "group"
+MODE_DUPLICATES = "duplicates"
 
 ATTRIBUTE_CHECKS: List[AttributeCheck] = [
     AttributeCheck(
@@ -488,6 +489,35 @@ ATTRIBUTE_CHECKS: List[AttributeCheck] = [
             "{col} < DATE '1900-01-01' OR {col} > now() + interval '1 year'"
         ),
     ),
+    AttributeCheck(
+        key="attr_attribute_duplicates",
+        title="Дубли по атрибутам",
+        summary=(
+            "Полные дубли строк, дубли составного ключа, совпадения без учёта "
+            "регистра и частичные вхождения."
+        ),
+        description=(
+            "Одна проверка объединяет четыре вида дублей по атрибутам: полные "
+            "дубли строк (совпадают все атрибутивные столбцы), дубли составного "
+            "ключа (совпадают все текстовые столбцы), совпадения без учёта "
+            "регистра и лишних пробелов («Москва» и «москва ») и частичные "
+            "вхождения — когда значение целиком входит в другое значение, "
+            "например «ЯмалоНенецкий автономный окру» входит в «ЯмалоНенецкий "
+            "автономный округ». Для частичных вхождений показывается процент "
+            "вхождения — доля длины короткого значения в длинном. Дубли "
+            "завышают статистику, дают двойные подписи на карте и мешают "
+            "объединять данные из разных источников. Подробный список с "
+            "процентами открывается двойным щелчком по ячейке."
+        ),
+        fix=(
+            "Просмотреть подробный список двойным щелчком по ячейке и "
+            "объединить или удалить лишние записи; для совпадений без учёта "
+            "регистра привести значения к единому написанию, для частичных "
+            "вхождений — заменить обрезанное значение полным."
+        ),
+        kind="all",
+        mode=MODE_DUPLICATES,
+    ),
 ]
 
 
@@ -561,7 +591,8 @@ COLUMN_SQL = (
     "    SELECT 1 FROM pg_catalog.pg_index i "
     "    WHERE i.indrelid = c.oid AND i.indisprimary "
     "      AND a.attnum = ANY (i.indkey)"
-    "  )"
+    "  ) "
+    "ORDER BY a.attnum"
 )
 
 TEXT_TYPES = (
@@ -623,6 +654,128 @@ def fetch_attribute_columns(db, table: SpatialTable) -> List[Tuple[str, str]]:
     return columns
 
 
+DUPLICATE_CATEGORY_FULL = "full"
+DUPLICATE_CATEGORY_KEY = "key"
+DUPLICATE_CATEGORY_CASE = "case"
+DUPLICATE_CATEGORY_PARTIAL = "partial"
+
+# Ограничение на число пар частичных вхождений: проверка не должна
+# превращаться в декартово произведение на большой таблице.
+PARTIAL_PAIR_LIMIT = 10000
+DETAIL_LIMIT = 500
+
+
+def _text_columns(columns: Sequence[Tuple[str, str]]) -> List[str]:
+    """Текстовые столбцы из списка атрибутивных."""
+
+    return [name for name, kind in columns if kind == "text"]
+
+
+def duplicates_union_sql(
+    table: SpatialTable,
+    columns: Sequence[Tuple[str, str]],
+) -> str:
+    """SQL со всеми видами дублей по атрибутам: четыре ветки UNION ALL.
+
+    Каждая ветка возвращает строку (category, a, b, percent): полные дубли
+    строк, дубли составного ключа из текстовых столбцов, совпадения без учёта
+    регистра и лишних пробелов и частичные вхождения с процентом вхождения
+    короткого значения в длинное.
+    """
+
+    target = table.qualified
+    names = [name for name, _kind in columns]
+    quoted = [quote_ident(name) for name in names]
+    parts: List[str] = []
+
+    if quoted:
+        group = ", ".join(quoted)
+        parts.append(
+            "(SELECT '{full}' AS category, "
+            "concat_ws(' | ', {group})::text AS a, "
+            "'×' || count(*)::text AS b, "
+            "NULL::numeric AS percent FROM {target} GROUP BY {group} "
+            "HAVING count(*) > 1)".format(
+                full=DUPLICATE_CATEGORY_FULL, group=group, target=target
+            )
+        )
+
+    text = _text_columns(columns)
+    if text:
+        group = ", ".join(quote_ident(name) for name in text)
+        parts.append(
+            "(SELECT '{key}' AS category, "
+            "concat_ws(' | ', {group})::text AS a, "
+            "'×' || count(*)::text AS b, "
+            "NULL::numeric AS percent FROM {target} GROUP BY {group} "
+            "HAVING count(*) > 1)".format(
+                key=DUPLICATE_CATEGORY_KEY, group=group, target=target
+            )
+        )
+        for name in text:
+            column = quote_ident(name)
+            parts.append(
+                "(SELECT '{case}' AS category, "
+                "lower(regexp_replace(btrim({column}), '\\s+', ' ', 'g'))::text AS a, "
+                "string_agg(DISTINCT {column}::text, ' | ') AS b, "
+                "NULL::numeric AS percent "
+                "FROM {target} WHERE {column} IS NOT NULL "
+                "GROUP BY 2 HAVING count(DISTINCT {column}) > 1)".format(
+                    case=DUPLICATE_CATEGORY_CASE, column=column, target=target
+                )
+            )
+            parts.append(
+                "(SELECT DISTINCT '{partial}' AS category, btrim(a.{column})::text AS a, "
+                "btrim(b.{column})::text AS b, "
+                "round(100.0 * length(btrim(a.{column})) "
+                "  / NULLIF(length(btrim(b.{column})), 0), 1) AS percent "
+                "FROM {target} a JOIN {target} b "
+                "ON position(btrim(a.{column}) IN btrim(b.{column})) > 0 "
+                "AND btrim(a.{column}) <> btrim(b.{column}) "
+                "AND length(btrim(a.{column})) >= 3 "
+                "LIMIT {limit})".format(
+                    partial=DUPLICATE_CATEGORY_PARTIAL,
+                    column=column,
+                    target=target,
+                    limit=PARTIAL_PAIR_LIMIT,
+                )
+            )
+
+    return "\nUNION ALL\n".join(parts)
+
+
+def duplicate_details(
+    db,
+    table: SpatialTable,
+    columns: Sequence[Tuple[str, str]],
+    limit: int = DETAIL_LIMIT,
+) -> List[Tuple[str, str, str, object]]:
+    """Подробный список дублей: (вид, значение, совпадение, процент)."""
+
+    union = duplicates_union_sql(table, columns)
+    if not union:
+        return []
+    query = QSqlQuery(db)
+    sql = "SELECT category, a, b, percent FROM (" + union + ") AS d LIMIT {}".format(
+        int(limit)
+    )
+    if not query.exec(sql):
+        raise RuntimeError(query_error(query, table.full_name))
+    rows: List[Tuple[str, str, str, object]] = []
+    while query.next():
+        percent = query.value(3)
+        rows.append(
+            (
+                str(query.value(0) or ""),
+                str(query.value(1) or ""),
+                str(query.value(2) or ""),
+                None if percent is None else float(percent),
+            )
+        )
+    return rows
+
+
+
 def build_attribute_sql(
     check: AttributeCheck,
     table: SpatialTable,
@@ -652,6 +805,12 @@ def build_attribute_sql(
             "  GROUP BY {columns} HAVING count(*) > 1\n"
             ") AS duplicates"
         ).format(table=table.qualified, columns=names)
+
+    if check.mode == MODE_DUPLICATES:
+        union = duplicates_union_sql(table, usable)
+        if not union:
+            return None
+        return "SELECT count(*) FROM (" + union + ") AS d"
 
     if check.mode == MODE_PER_COLUMN:
         parts = [
@@ -701,6 +860,7 @@ class AttributeTask(QThread):
 
     check_started = pyqtSignal(str)  # название проверки (строка-источник)
     check_done = pyqtSignal(str, str, object, str)  # ключ, таблица, итог, ошибка
+    check_details = pyqtSignal(str, str, object)  # ключ, таблица, список дублей
     progress = pyqtSignal(int, int)  # (готово, всего)
     finished_all = pyqtSignal(bool, str)  # (отменено, текст ошибки)
 
@@ -738,12 +898,17 @@ class AttributeTask(QThread):
                         return
                     count = None
                     error = ""
+                    details: List[Tuple[str, str, str, object]] = []
                     try:
                         columns = fetch_attribute_columns(db, table)
                         count = run_attribute_check(db, table, check, columns)
+                        if check.mode == MODE_DUPLICATES and count:
+                            details = duplicate_details(db, table, columns)
                     except Exception as exc:  # noqa: BLE001
                         error = str(exc)
                     self.check_done.emit(check.key, table.full_name, count, error)
+                    if details:
+                        self.check_details.emit(check.key, table.full_name, details)
                     done += 1
                     self.progress.emit(done, total)
             self.finished_all.emit(False, "")

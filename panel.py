@@ -12,6 +12,7 @@ from qgis.PyQt.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QDialog,
     QDockWidget,
     QGridLayout,
     QListWidget,
@@ -100,6 +101,122 @@ def _geometry_label(table: SpatialTable) -> str:
     return table.geom_type
 
 
+class DuplicateDetailsDialog(QDialog):
+    """Подробный список дублей по атрибутам с процентом вхождения."""
+
+    CATEGORY_SOURCES = {
+        "full": "Полные дубли строк",
+        "key": "Дубли составного ключа",
+        "case": "Совпадения без учёта регистра и пробелов",
+        "partial": "Частичные вхождения",
+    }
+
+    def __init__(self, parent, table_name: str, details) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("ZGeo-PG — " + tr("Дубли по атрибутам"))
+        self.resize(760, 460)
+        layout = QVBoxLayout(self)
+
+        self._table_label = QLabel(table_name)
+        layout.addWidget(self._table_label)
+
+        self._table = QTableWidget(len(details), 4)
+        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._table.verticalHeader().setVisible(False)
+        for row, (category, left, right, percent) in enumerate(details):
+            category_item = QTableWidgetItem(
+                tr(self.CATEGORY_SOURCES.get(category, category))
+            )
+            category_item.setData(Qt.ItemDataRole.UserRole, category)
+            self._table.setItem(row, 0, category_item)
+            self._table.setItem(row, 1, QTableWidgetItem(left))
+            self._table.setItem(row, 2, QTableWidgetItem(right))
+            percent_item = QTableWidgetItem(
+                "" if percent is None else "{:.1f} %".format(percent)
+            )
+            if percent is not None:
+                percent_item.setData(Qt.ItemDataRole.UserRole, percent)
+            self._table.setItem(row, 3, percent_item)
+        self._table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.ResizeToContents
+        )
+        self._table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self._table, 1)
+
+        self._summary = QLabel()
+        layout.addWidget(self._summary)
+
+        buttons = QHBoxLayout()
+        self._export_button = QPushButton()
+        self._export_button.clicked.connect(self._on_export)
+        buttons.addWidget(self._export_button)
+        buttons.addStretch(1)
+        close_button = QPushButton(tr("Закрыть"))
+        close_button.clicked.connect(self.accept)
+        buttons.addWidget(close_button)
+        layout.addLayout(buttons)
+
+        self.retranslate()
+
+    def retranslate(self) -> None:
+        self._table.setHorizontalHeaderLabels(
+            [
+                tr("Вид дубля"),
+                tr("Значение"),
+                tr("Совпадение"),
+                tr("Процент вхождения"),
+            ]
+        )
+        for row in range(self._table.rowCount()):
+            item = self._table.item(row, 0)
+            if item is None:
+                continue
+            category = item.data(Qt.ItemDataRole.UserRole)
+            if category:
+                item.setText(tr(self.CATEGORY_SOURCES.get(category, category)))
+        self._export_button.setText(tr("Экспорт"))
+        self._summary.setText(
+            tr("Записей в списке: {}").format(self._table.rowCount())
+        )
+
+    def _rows(self) -> List[List[object]]:
+        rows: List[List[object]] = []
+        for row in range(self._table.rowCount()):
+            values: List[object] = []
+            for column in range(self._table.columnCount()):
+                item = self._table.item(row, column)
+                values.append(item.text() if item is not None else "")
+            rows.append(values)
+        return rows
+
+    def _on_export(self) -> None:
+        if self._table.rowCount() == 0:
+            return
+        export_format = ask_export_format(self, self._export_button)
+        if export_format is None:
+            return
+        headers = [
+            self._table.horizontalHeaderItem(column).text()
+            for column in range(self._table.columnCount())
+        ]
+        suffix = "html" if export_format == FORMAT_HTML else "xlsx"
+        export_rows_with_dialog(
+            self,
+            headers,
+            self._rows(),
+            "zgeo-pg_duplicates." + suffix,
+            tr("Дубли по атрибутам"),
+            export_format=export_format,
+        )
+
+
+def show_duplicate_details(parent, table_name: str, details) -> None:
+    """Открыть окно с подробным списком дублей."""
+
+    dialog = DuplicateDetailsDialog(parent, table_name, details)
+    dialog.exec()
+
+
 class QualityTabPage(QWidget):
     """Вкладка проверок качества: галочки, описания, результаты и экспорт."""
 
@@ -118,6 +235,7 @@ class QualityTabPage(QWidget):
         self._errors = 0
         self._state: Tuple[str, str] = ("idle", "")
         self._results: Dict[str, Dict[str, Tuple[object, str]]] = {}
+        self._details: Dict[Tuple[str, str], List[tuple]] = {}
         self._help_key: Optional[str] = None
         self._build()
 
@@ -159,6 +277,7 @@ class QualityTabPage(QWidget):
         self.table = QTableWidget(0, 0)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
+        self.table.cellDoubleClicked.connect(self._on_cell_double_clicked)
         layout.addWidget(self.table, 1)
 
         self.summary_label = QLabel()
@@ -267,6 +386,10 @@ class QualityTabPage(QWidget):
         self._task = self._task_class(host._conn, list(host._tables), checks, self)
         self._task.check_started.connect(self._on_check_started)
         self._task.check_done.connect(self._on_check_done)
+        if hasattr(self._task, "check_details"):
+            # Подробный список дублей приходит только у проверок, которые
+            # умеют его собрать (дубли по атрибутам).
+            self._task.check_details.connect(self._on_check_details)
         self._task.progress.connect(host.progress_update)
         self._task.finished_all.connect(self._on_finished)
 
@@ -319,6 +442,7 @@ class QualityTabPage(QWidget):
         self.summary_label.setText("")
         self.export_button.setEnabled(False)
         self._results = {}
+        self._details = {}
 
     def _populate_headers(self) -> None:
         if self.table.columnCount() < 2:
@@ -345,6 +469,29 @@ class QualityTabPage(QWidget):
             self._problems += int(count)
         self._render_cell(row, column, count, error)
         self.export_button.setEnabled(True)
+
+    def _on_check_details(self, key: str, table_name: str, details) -> None:
+        """Запомнить подробный список дублей для ячейки."""
+
+        self._details[(key, table_name)] = list(details)
+
+    def _on_cell_double_clicked(self, row: int, column: int) -> None:
+        """Показать подробный список дублей по двойному щелчку."""
+
+        if column < 2:
+            return
+        key = self._columns[column - 2]
+        table_name = None
+        for name, index in self._row_of.items():
+            if index == row:
+                table_name = name
+                break
+        if table_name is None:
+            return
+        details = self._details.get((key, table_name))
+        if not details:
+            return
+        show_duplicate_details(self, table_name, details)
 
     def _render_cell(self, row: int, column: int, count, error: str) -> None:
         if error:

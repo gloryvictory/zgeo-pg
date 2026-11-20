@@ -568,6 +568,18 @@ EN_TRANSLATIONS = {
         "SELECT * FROM ... ORDER BY field DESC LIMIT 100."
     ),
     "Даты вне разумного диапазона": "Dates out of the reasonable range",
+    # Дубли по атрибутам
+    "Дубли по атрибутам": "Attribute duplicates",
+    "Полные дубли строк": "Exact duplicate rows",
+    "Дубли составного ключа": "Composite key duplicates",
+    "Совпадения без учёта регистра и пробелов": (
+        "Matches ignoring case and spaces"
+    ),
+    "Частичные вхождения": "Partial matches",
+    "Вид дубля": "Duplicate kind",
+    "Совпадение": "Match",
+    "Процент вхождения": "Match percentage",
+    "Записей в списке: {}": "Rows in the list: {}",
     "Дата раньше 1900 года или позже чем через год от текущей.": (
         "The date is before 1900 or later than a year from today."
     ),
