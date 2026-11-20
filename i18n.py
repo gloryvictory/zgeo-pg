@@ -605,6 +605,9 @@ EN_TRANSLATIONS = {
     "Есть в правой, но нет в левой": (
         "Present in the right panel but not in the left"
     ),
+    "Все из левой панели есть в правой": (
+        "Everything from the left panel is present in the right"
+    ),
     "Уникальных значений: {}": "Unique values: {}",
     "Всего уникальных значений в сравнении: {}": (
         "Total unique values compared: {}"

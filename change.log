@@ -3,6 +3,16 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.29.0] - 2026-11-18
+
+### Added
+
+- The reference data statistics has a fourth row, "Everything from the left
+  panel is present in the right", whose value is only "Yes" or "No".
+- The verdict is repeated in the tab status bar, written to the "Statistics"
+  sheet of the Excel export and to the HTML report, and its right-click menu
+  entry lists the values that are missing on the right.
+
 ## [0.28.0] - 2026-11-18
 
 ### Added

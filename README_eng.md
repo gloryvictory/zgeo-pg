@@ -4,7 +4,7 @@
 
 QGIS plugin for viewing spatial data stored in a PostgreSQL / PostGIS database.
 
-Plugin version: **0.28.0**  
+Plugin version: **0.29.0**  
 Release history: [change.log](change.log)
 
 The plugin adds a **"ZGeo-PG"** toolbar panel in QGIS with a **"ZGeo-PG Catalog"** button that opens a floating panel. In the panel:
@@ -31,7 +31,7 @@ The plugin adds a **"ZGeo-PG"** toolbar panel in QGIS with a **"ZGeo-PG Catalog"
 - the checks run in a background thread over every loaded table; the "Run checks", "Abort" and "Export" (Excel or HTML) buttons sit at the bottom of the tab, the name of the current check is shown above the status bar and its progress in the status bar, and the results fill a table × check grid with the problem cells highlighted;
 - the **"Attribute data quality"** tab offers the same set of tools for 10 attribute checks: NULL values, empty strings, leading and trailing spaces, double spaces, duplicate records, numbers stored as text, control characters, abnormal text length, outliers in numeric columns and dates out of the reasonable range; a check runs only on columns of a matching type and shows "Not applicable" when there are none;
 - the **"Reference data quality"** tab splits the panel in two: on the left and on the right you pick a connection, a table and a text field, and the sorted lists of unique values are shown below; the "Compare" button sits between the panels with the statistics "Matched", "Present in the left panel but not in the right", "Present in the right panel but not in the left" underneath;
-- the right-click menu of the statistics table (and a double click on a row) opens the list of the chosen category on the right; each panel list and the comparison result are exported to Excel or HTML: Excel gets a "Statistics" sheet plus one sheet per category ("Matched", "Present in the left panel but not in the right", "Present in the right panel but not in the left"), and HTML gets one page with a link panel on top, then "Selected sources" (connection, table and field of both sides), "Statistics" and the value tables of every category;
+- the right-click menu of the statistics table (and a double click on a row) opens the list of the chosen category on the right, including the verdict row "Everything from the left panel is present in the right" (its value is only "Yes" or "No", and the list shows the values missing on the right); each panel list and the comparison result are exported to Excel or HTML: Excel gets a "Statistics" sheet plus one sheet per category ("Matched", "Present in the left panel but not in the right", "Present in the right panel but not in the left"), and HTML gets one page with a link panel on top, then "Selected sources" (connection, table and field of both sides), "Statistics" and the value tables of every category;
 - picking an entry in the "Connection" list connects to it at once, and a green or red dot left of the list shows whether it worked (the error text is in the tooltip);
 - when the table list is empty the tab explains why: "Connected, but the database has no tables" or "Connected, but no privilege to read tables: <name> (tables in the database: N)";
 - both sides of the reference data tab see the connection the panel is using even when it was never saved, and refresh the list on connect, save and delete; an unreachable database reports an error and the tab keeps working;
@@ -91,7 +91,7 @@ Build the archive:
 powershell -ExecutionPolicy Bypass -File .\scripts\build_zip.ps1
 ```
 
-The ready file will appear in `dist\zgeo-pg-0.28.0.zip`. Only the latest build is kept in `dist`. The script first closes a running QGIS Desktop (it keeps the plugin files locked, so the copy fails otherwise), installs the build into the QGIS Desktop 4.x profile (`%APPDATA%\QGIS\QGIS4\profiles\<profile>\python\plugins\zgeo-pg`) and starts QGIS again. Pass `-SkipQGISInstall` to only build the archive, and `-NoRestart` to leave QGIS closed.
+The ready file will appear in `dist\zgeo-pg-0.29.0.zip`. Only the latest build is kept in `dist`. The script first closes a running QGIS Desktop (it keeps the plugin files locked, so the copy fails otherwise), installs the build into the QGIS Desktop 4.x profile (`%APPDATA%\QGIS\QGIS4\profiles\<profile>\python\plugins\zgeo-pg`) and starts QGIS again. Pass `-SkipQGISInstall` to only build the archive, and `-NoRestart` to leave QGIS closed.
 
 Or install it manually. In QGIS open:
 

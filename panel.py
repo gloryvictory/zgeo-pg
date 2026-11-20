@@ -831,6 +831,8 @@ class NsiTabPage(QWidget):
         self._viewer.setVisible(False)
 
     def _categories(self) -> List[Tuple[str, List[str]]]:
+        """Списки значений по категориям сверки."""
+
         return [
             (tr("Совпало"), self._comparison.matched),
             (
@@ -843,15 +845,39 @@ class NsiTabPage(QWidget):
             ),
         ]
 
+    def _verdict_label(self) -> str:
+        """Название итоговой проверки: все левые значения есть справа."""
+
+        return tr("Все из левой панели есть в правой")
+
+    def _verdict(self) -> str:
+        """Да или Нет: все значения левой панели нашлись в правой."""
+
+        if not self._comparison.total:
+            return ""
+        return tr("Да") if not self._comparison.left_only else tr("Нет")
+
+    def _verdict_values(self) -> List[str]:
+        """Значения, которых не хватает в правой панели (для списка справа)."""
+
+        return list(self._comparison.left_only)
+
     def _populate_stats(self) -> None:
         categories = self._categories()
-        self._stats_table.setRowCount(len(categories))
+        verdict = self._verdict()
+        rows = len(categories) + (1 if verdict else 0)
+        self._stats_table.setRowCount(rows)
         self._stats_table.setColumnCount(2)
         for row, (name, values) in enumerate(categories):
             self._stats_table.setItem(row, 0, QTableWidgetItem(name))
             count_item = QTableWidgetItem(str(len(values)))
             count_item.setData(Qt.ItemDataRole.UserRole, len(values))
             self._stats_table.setItem(row, 1, count_item)
+        if verdict:
+            # Итоговая строка отвечает только «Да» или «Нет».
+            row = len(categories)
+            self._stats_table.setItem(row, 0, QTableWidgetItem(self._verdict_label()))
+            self._stats_table.setItem(row, 1, QTableWidgetItem(verdict))
         self._stats_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.ResizeToContents
         )
@@ -884,6 +910,10 @@ class NsiTabPage(QWidget):
             return
         self._status_label.setText(
             tr("Всего уникальных значений в сравнении: {}").format(total)
+            + " — "
+            + self._verdict_label()
+            + ": "
+            + self._verdict()
         )
 
     def _empty_text(self, name: str, total: int) -> str:
@@ -896,26 +926,35 @@ class NsiTabPage(QWidget):
         return tr("Подключено, но в базе нет таблиц") + ": " + name
 
     # --------------------------------------------------------------- списки
+    def _menu_targets(self) -> List[Tuple[str, List[str]]]:
+        """Пункты меню статистики: категории и итоговая проверка."""
+
+        targets = list(self._categories())
+        if self._verdict():
+            # В итоговой строке справа показываем значения, из-за которых «Нет».
+            targets.append((self._verdict_label(), self._verdict_values()))
+        return targets
+
     def _on_menu(self, position) -> None:
         row = self._stats_table.rowAt(position.y())
-        categories = self._categories()
-        if row < 0 or row >= len(categories):
+        targets = self._menu_targets()
+        if row < 0 or row >= len(targets):
             return
         menu = QMenu(self)
-        targets = {}
-        for index, (name, values) in enumerate(categories):
+        actions = {}
+        for index, (name, values) in enumerate(targets):
             action = menu.addAction(name)
             action.setCheckable(True)
             action.setChecked(index == row)
-            targets[action] = (name, values)
+            actions[action] = (name, values)
         chosen = menu.exec(self._stats_table.viewport().mapToGlobal(position))
-        if chosen in targets:
-            self._show_list(*targets[chosen])
+        if chosen in actions:
+            self._show_list(*actions[chosen])
 
     def _on_double_click(self, row: int, _column: int) -> None:
-        categories = self._categories()
-        if 0 <= row < len(categories):
-            name, values = categories[row]
+        targets = self._menu_targets()
+        if 0 <= row < len(targets):
+            name, values = targets[row]
             self._show_list(name, values)
 
     def _show_list(self, name: str, values: List[str]) -> None:
@@ -949,9 +988,15 @@ class NsiTabPage(QWidget):
         ]
 
     def _stats_rows(self) -> List[List[object]]:
-        """Статистика сверки: категория и количество значений."""
+        """Статистика сверки: категория и количество или «Да»/«Нет»."""
 
-        return [[name, len(values)] for name, values in self._categories()]
+        rows: List[List[object]] = [
+            [name, len(values)] for name, values in self._categories()
+        ]
+        verdict = self._verdict()
+        if verdict:
+            rows.append([self._verdict_label(), verdict])
+        return rows
 
     def _on_export(self) -> None:
         """Экспорт сверки: листы Excel по категориям или HTML-отчёт."""
