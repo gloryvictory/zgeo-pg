@@ -3,6 +3,33 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.32.0] - 2026-11-18
+
+### Added
+
+- Six instant catalog checks that run first, before any table scan: geometry
+  type not specified, SRID missing from spatial_ref_sys, geometry column allows
+  NULL, the geometry index is not GiST, redundant spatial indexes and stale
+  table statistics.
+- Nine checks that scan the table once: self-intersecting lines, swapped
+  latitude and longitude (SRID 4326 only), too many vertices, tiny polygons,
+  extra Z or M, geometry collections, too many parts, very large geometry and
+  holes in polygons.
+- A "Thresholds" button and dialog on the spatial tab: maximum vertices,
+  minimum polygon area (planar and geographic), maximum parts, maximum geometry
+  size and statistics staleness. The values are stored in QSettings under
+  `zgeopg/quality`.
+
+### Changed
+
+- `QualityCheck` gained `catalog_sql` (a query that returns 1 or 0),
+  `only_geographic` and threshold placeholders; `QUALITY_CHECKS` is sorted so
+  the catalog checks come first.
+- `build_sql()`, `build_catalog_sql()`, `run_check()` and `QualityTask` accept a
+  thresholds dictionary, so a run uses one consistent set of numbers.
+- The missing spatial index check is now keyed explicitly instead of relying on
+  `from_catalog`, because other catalog checks read real SQL.
+
 ## [0.31.0] - 2026-11-18
 
 ### Changed

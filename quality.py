@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
 
-from qgis.PyQt.QtCore import QThread, pyqtSignal
+from qgis.PyQt.QtCore import QSettings, QThread, pyqtSignal
 from qgis.PyQt.QtSql import QSqlQuery
 
 from .catalog import SpatialTable, quote_ident
@@ -32,6 +32,41 @@ KNOWN_GEOMETRY_TYPES = (
 # Проверка, которая берёт сведения из каталога и не обращается к данным.
 CHECK_MISSING_INDEX = "missing_spatial_index"
 
+# Пороги проверок: читаются из настроек QGIS, чтобы не зашивать числа в код.
+THRESHOLD_DEFAULTS = {
+    "max_points": 10000,
+    "min_area": 1.0,
+    "min_area_geographic": 1.0,
+    "max_parts": 1000,
+    "max_bytes": 1000000,
+    "stale_days": 30,
+}
+
+THRESHOLD_KEY = "zgeopg/quality"
+
+
+def load_thresholds() -> dict:
+    """Пороги проверок из настроек QGIS с подстановкой значений по умолчанию."""
+
+    settings = QSettings()
+    values = {}
+    for name, default in THRESHOLD_DEFAULTS.items():
+        raw = settings.value(THRESHOLD_KEY + "/" + name, default)
+        try:
+            values[name] = float(raw) if isinstance(default, float) else int(raw)
+        except (TypeError, ValueError):
+            values[name] = default
+    return values
+
+
+def save_thresholds(values) -> None:
+    """Сохранить пороги проверок в настройках QGIS."""
+
+    settings = QSettings()
+    for name, default in THRESHOLD_DEFAULTS.items():
+        if name in values:
+            settings.setValue(THRESHOLD_KEY + "/" + name, values[name])
+
 
 @dataclass(frozen=True)
 class QualityCheck:
@@ -47,6 +82,10 @@ class QualityCheck:
     needs_srid: bool = False
     needs_type: bool = False
     from_catalog: bool = False
+    # Запрос к каталогу PostGIS: 1 — проблема есть, 0 — нет.
+    catalog_sql: Optional[str] = None
+    # Проверка имеет смысл только для географических данных (SRID 4326).
+    only_geographic: bool = False
 
 
 QUALITY_CHECKS: List[QualityCheck] = [
@@ -271,6 +310,384 @@ QUALITY_CHECKS: List[QualityCheck] = [
             "кнопкой «Создать все пространственные индексы» на вкладке «Таблицы»."
         ),
         from_catalog=True,
+    ),
+    # ---------------------------------------------------- быстрые из каталога
+    QualityCheck(
+        key="geometry_type_unspecified",
+        title="Тип геометрии не задан",
+        summary="Столбец объявлен как geometry без типа и SRID.",
+        description=(
+            "Сведения берутся из системного каталога: у геометрического столбца "
+            "нет ограничения типа (typmod), поэтому в таблице могут оказаться "
+            "точки, линии и полигоны одновременно. Без ограничения типа PostGIS "
+            "не проверяет корректность вставки, а QGIS не может построить "
+            "оформление и легенду по типу слоя. Проверка мгновенная: данные "
+            "таблицы не читаются."
+        ),
+        fix=(
+            "Задать тип и SRID ограничением: ALTER TABLE ... ALTER COLUMN geom "
+            "TYPE geometry(Point, 4326) USING geom::geometry(Point, 4326)."
+        ),
+        from_catalog=True,
+        catalog_sql=(
+            "SELECT CASE WHEN EXISTS ("
+            "  SELECT 1 FROM pg_catalog.pg_attribute a "
+            "  JOIN pg_catalog.pg_class c ON c.oid = a.attrelid "
+            "  JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+            "  WHERE n.nspname = {schema_lit} AND c.relname = {name_lit} "
+            "    AND a.attnum > 0 AND NOT a.attisdropped "
+            "    AND a.atttypid = 'geometry'::regtype AND a.atttypmod = -1"
+            ") THEN 1 ELSE 0 END"
+        ),
+    ),
+    QualityCheck(
+        key="srid_unregistered",
+        title="SRID не зарегистрирован",
+        summary="Кода SRID таблицы нет в spatial_ref_sys.",
+        description=(
+            "Каталог PostGIS сообщает SRID, которого нет в spatial_ref_sys: "
+            "PostGIS не знает параметров этой системы координат. Объекты "
+            "отображаются в неизвестной системе, ST_Transform невозможен, а "
+            "расчёт площадей и длин даёт неверные числа. Проверка выполняется "
+            "по каталогу и не читает данные."
+        ),
+        fix=(
+            "Добавить систему координат в spatial_ref_sys или пересоздать "
+            "столбец с корректным SRID: ALTER TABLE ... ALTER COLUMN geom TYPE "
+            "geometry(Point, <SRID>) USING ST_SetSRID(geom, <SRID>)."
+        ),
+        from_catalog=True,
+        catalog_sql=(
+            "SELECT CASE WHEN EXISTS ("
+            "  SELECT 1 FROM pg_catalog.pg_attribute a "
+            "  JOIN pg_catalog.pg_class c ON c.oid = a.attrelid "
+            "  JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+            "  WHERE n.nspname = {schema_lit} AND c.relname = {name_lit} "
+            "    AND a.attnum > 0 AND NOT a.attisdropped "
+            "    AND a.atttypid = 'geometry'::regtype "
+            "    AND postgis_typmod_srid(a.atttypmod) > 0 "
+            "    AND NOT EXISTS ("
+            "      SELECT 1 FROM public.spatial_ref_sys s "
+            "      WHERE s.srid = postgis_typmod_srid(a.atttypmod)"
+            "    )"
+            ") THEN 1 ELSE 0 END"
+        ),
+    ),
+    QualityCheck(
+        key="geometry_nullable",
+        title="Геометрия допускает NULL",
+        summary="У геометрического столбца нет ограничения NOT NULL.",
+        description=(
+            "Каталог показывает, что столбец геометрии допускает пустые "
+            "значения. Пока ограничения нет, любой импорт или ручная вставка "
+            "может добавить объект без координат, и такие строки всплывут "
+            "позже как «пустая геометрия». Ограничение ставится один раз и "
+            "закрывает эту возможность. Проверка мгновенная."
+        ),
+        fix=(
+            "Убедиться, что пустых объектов нет, и запретить их: ALTER TABLE "
+            "... ALTER COLUMN geom SET NOT NULL."
+        ),
+        from_catalog=True,
+        catalog_sql=(
+            "SELECT CASE WHEN EXISTS ("
+            "  SELECT 1 FROM pg_catalog.pg_attribute a "
+            "  JOIN pg_catalog.pg_class c ON c.oid = a.attrelid "
+            "  JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+            "  WHERE n.nspname = {schema_lit} AND c.relname = {name_lit} "
+            "    AND a.attnum > 0 AND NOT a.attisdropped "
+            "    AND a.atttypid = 'geometry'::regtype AND NOT a.attnotnull"
+            ") THEN 1 ELSE 0 END"
+        ),
+    ),
+    QualityCheck(
+        key="index_not_gist",
+        title="Индекс по геометрии не GiST",
+        summary="Пространственный столбец индексирован не GiST и не SP-GiST.",
+        description=(
+            "По столбцу геометрии построен индекс другого типа (btree, hash) — "
+            "PostGIS не использует его в пространственных операторах. Такой "
+            "индекс занимает место и замедляет вставку, но не ускоряет "
+            "фильтры ST_Intersects, ST_DWithin и поиск по рамке. Сведения "
+            "берутся из каталога, данные не читаются."
+        ),
+        fix=(
+            "Удалить бесполезный индекс и построить GiST: DROP INDEX ...; "
+            "CREATE INDEX ... ON ... USING gist (geom)."
+        ),
+        from_catalog=True,
+        catalog_sql=(
+            "SELECT CASE WHEN EXISTS ("
+            "  SELECT 1 FROM pg_catalog.pg_index i "
+            "  JOIN pg_catalog.pg_class c ON c.oid = i.indrelid "
+            "  JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+            "  JOIN pg_catalog.pg_class idx ON idx.oid = i.indexrelid "
+            "  JOIN pg_catalog.pg_am am ON am.oid = idx.relam "
+            "  JOIN pg_catalog.pg_attribute a "
+            "    ON a.attrelid = c.oid AND a.attnum = ANY (i.indkey) "
+            "  WHERE n.nspname = {schema_lit} AND c.relname = {name_lit} "
+            "    AND a.atttypid = 'geometry'::regtype "
+            "    AND am.amname NOT IN ('gist', 'spgist')"
+            ") THEN 1 ELSE 0 END"
+        ),
+    ),
+    QualityCheck(
+        key="duplicate_spatial_indexes",
+        title="Лишние пространственные индексы",
+        summary="По столбцу геометрии построено больше одного GiST-индекса.",
+        description=(
+            "Каталог показывает два и более GiST-индекса по одному и тому же "
+            "столбцу геометрии. Планировщик использует только один, а каждый "
+            "лишний занимает диск и замедляет каждую вставку и обновление. "
+            "Обычно так остаётся после экспериментов с индексами. Проверка "
+            "мгновенная, данные не читаются."
+        ),
+        fix=(
+            "Оставить один индекс и удалить остальные: DROP INDEX ... для "
+            "каждого лишнего GiST-индекса."
+        ),
+        from_catalog=True,
+        catalog_sql=(
+            "SELECT CASE WHEN ("
+            "  SELECT count(*) FROM pg_catalog.pg_index i "
+            "  JOIN pg_catalog.pg_class c ON c.oid = i.indrelid "
+            "  JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+            "  JOIN pg_catalog.pg_class idx ON idx.oid = i.indexrelid "
+            "  JOIN pg_catalog.pg_am am ON am.oid = idx.relam "
+            "  JOIN pg_catalog.pg_attribute a "
+            "    ON a.attrelid = c.oid AND a.attnum = ANY (i.indkey) "
+            "  WHERE n.nspname = {schema_lit} AND c.relname = {name_lit} "
+            "    AND a.atttypid = 'geometry'::regtype "
+            "    AND am.amname IN ('gist', 'spgist')"
+            ") > 1 THEN 1 ELSE 0 END"
+        ),
+    ),
+    QualityCheck(
+        key="statistics_stale",
+        title="Устаревшая статистика таблицы",
+        summary="ANALYZE не запускался дольше заданного числа дней.",
+        description=(
+            "PostgreSQL хранит дату последнего ANALYZE. Если она старше порога "
+            "из настроек (по умолчанию 30 дней) или её нет, планировщик "
+            "оценивает количество строк по устаревшим данным: пространственные "
+            "фильтры начинают читать таблицу целиком, а сводки и проверки "
+            "качества идут в разы дольше. Сведения берутся из "
+            "pg_stat_user_tables, данные не читаются."
+        ),
+        fix=(
+            "Обновить статистику: ANALYZE <схема>.<таблица>; при частых "
+            "изменениях проверить настройки autovacuum."
+        ),
+        from_catalog=True,
+        catalog_sql=(
+            "SELECT CASE WHEN EXISTS ("
+            "  SELECT 1 FROM pg_catalog.pg_stat_user_tables s "
+            "  WHERE s.schemaname = {schema_lit} AND s.relname = {name_lit} "
+            "    AND s.n_live_tup > 0 "
+            "    AND coalesce(greatest(s.last_analyze, s.last_autoanalyze), "
+            "        '-infinity'::timestamptz) < now() - interval '{stale_days} days'"
+            ") THEN 1 ELSE 0 END"
+        ),
+    ),
+    # ------------------------------------------------ один проход по таблице
+    QualityCheck(
+        key="not_simple",
+        title="Самопересекающиеся линии",
+        summary="Линия проходит через собственную точку.",
+        description=(
+            "Проверка ищет линии, которые не являются простыми: контур заходит "
+            "сам в себя или линия дважды проходит через одну точку. "
+            "ST_IsValid для линий это не проверяет, поэтому обычная проверка "
+            "валидности такие объекты пропускает. Непростые линии дают "
+            "некорректную длину, ломают маршрутизацию и топологические "
+            "операции."
+        ),
+        fix=(
+            "Разрезать линию на простые части: ST_LineMerge или "
+            "ST_Node(geom), затем проверить результат ST_IsSimple."
+        ),
+        sql=(
+            "SELECT count(*) FROM {table}\n"
+            "WHERE {geom} IS NOT NULL AND NOT ST_IsEmpty({geom})\n"
+            "  AND GeometryType({geom}) IN ('LINESTRING', 'MULTILINESTRING')\n"
+            "  AND NOT ST_IsSimple({geom})"
+        ),
+    ),
+    QualityCheck(
+        key="swapped_axes",
+        title="Перепутаны широта и долгота",
+        summary="Для SRID 4326 координаты похожи на перевёрнутые оси.",
+        description=(
+            "Для географических данных проверяется признак перевёрнутых осей: "
+            "долгота по модулю не больше 90, а широта больше 90 — значит "
+            "координаты вставлены как (широта, долгота). Такие объекты "
+            "уезжают на другой конец планеты, и «Приблизить к слою» "
+            "показывает весь мир. Проверка выполняется только для SRID 4326."
+        ),
+        fix=(
+            "Поменять координаты местами: UPDATE ... SET geom = "
+            "ST_FlipCoordinates(geom) WHERE ... — только для найденных "
+            "объектов."
+        ),
+        sql=(
+            "SELECT count(*) FROM {table}\n"
+            "WHERE {geom} IS NOT NULL AND NOT ST_IsEmpty({geom})\n"
+            "  AND abs(ST_X(ST_Centroid({geom}))) <= 90\n"
+            "  AND abs(ST_Y(ST_Centroid({geom}))) > 90"
+        ),
+        only_geographic=True,
+    ),
+    QualityCheck(
+        key="too_many_points",
+        title="Слишком много вершин",
+        summary="Объект содержит больше вершин, чем задано порогом.",
+        description=(
+            "Сравнивается число вершин объекта (ST_NPoints) с порогом из "
+            "настроек — по умолчанию 10 000. Такие объекты появляются после "
+            "сложения геометрий без упрощения и делают слой тяжёлым: QGIS "
+            "долго рисует карту, медленно работают выборки и экспорт. Порог "
+            "задаётся на вкладке проверок."
+        ),
+        fix=(
+            "Упростить геометрию: UPDATE ... SET geom = "
+            "ST_SimplifyPreserveTopology(geom, <допуск>) или "
+            "ST_Subdivide для очень длинных объектов."
+        ),
+        sql=(
+            "SELECT count(*) FROM {table}\n"
+            "WHERE {geom} IS NOT NULL AND ST_NPoints({geom}) > {max_points}"
+        ),
+    ),
+    QualityCheck(
+        key="tiny_polygons",
+        title="Микрообъекты",
+        summary="Площадь полигона меньше порога из настроек.",
+        description=(
+            "Проверка ищет полигоны с площадью меньше порога — по умолчанию "
+            "1 квадратная единица. Такие «осколки» обычно остаются после "
+            "обрезки и наложения слоёв, засоряют атрибутивные таблицы и "
+            "попадают в отчёты как полноценные объекты. Для географических "
+            "данных площадь считается в квадратных метрах."
+        ),
+        fix=(
+            "Удалить осколки или объединить их с соседями: DELETE FROM ... "
+            "WHERE ST_Area(geom) < <порог>."
+        ),
+        sql=(
+            "SELECT count(*) FROM {table}\n"
+            "WHERE {geom} IS NOT NULL AND NOT ST_IsEmpty({geom})\n"
+            "  AND GeometryType({geom}) IN ('POLYGON', 'MULTIPOLYGON')\n"
+            "  AND ST_Area({geom}) < {min_area}"
+        ),
+        sql_geographic=(
+            "SELECT count(*) FROM {table}\n"
+            "WHERE {geom} IS NOT NULL AND NOT ST_IsEmpty({geom})\n"
+            "  AND GeometryType({geom}) IN ('POLYGON', 'MULTIPOLYGON')\n"
+            "  AND ST_Area({geom}::geography) < {min_area_geographic}"
+        ),
+    ),
+    QualityCheck(
+        key="has_z_or_m",
+        title="Лишняя размерность Z или M",
+        summary="Геометрия имеет Z или M там, где ожидается плоская 2D.",
+        description=(
+            "Проверка ищет объекты с третьей координатой или измерением M "
+            "(ST_NDims и ST_Zmflag). Разная размерность в одном столбце "
+            "ломает сравнение геометрий, мешает экспорту в простые форматы и "
+            "даёт неожиданные результаты в операциях наложения."
+        ),
+        fix=(
+            "Привести объекты к 2D: UPDATE ... SET geom = ST_Force2D(geom), "
+            "затем задать тип столбца geometry(<Тип>, <SRID>)."
+        ),
+        sql=(
+            "SELECT count(*) FROM {table}\n"
+            "WHERE {geom} IS NOT NULL\n"
+            "  AND (ST_NDims({geom}) <> 2 OR ST_Zmflag({geom}) <> 0)"
+        ),
+    ),
+    QualityCheck(
+        key="geometry_collections",
+        title="Коллекции геометрий",
+        summary="Объект имеет тип GEOMETRYCOLLECTION.",
+        description=(
+            "Проверка ищет объекты-коллекции, в которых смешаны точки, линии и "
+            "полигоны. Коллекции не поддерживаются частью операций PostGIS и "
+            "плохо отображаются в QGIS: оформление задаётся по одному типу, "
+            "экспорт в Shapefile такие объекты теряет."
+        ),
+        fix=(
+            "Разобрать коллекции на однотипные объекты: "
+            "ST_CollectionExtract(geom, 1|2|3) или ST_Dump с созданием "
+            "отдельных строк."
+        ),
+        sql=(
+            "SELECT count(*) FROM {table}\n"
+            "WHERE {geom} IS NOT NULL AND NOT ST_IsEmpty({geom})\n"
+            "  AND GeometryType({geom}) = 'GEOMETRYCOLLECTION'"
+        ),
+    ),
+    QualityCheck(
+        key="too_many_parts",
+        title="Слишком много частей в объекте",
+        summary="Число частей мультигеометрии выше порога из настроек.",
+        description=(
+            "Сравнивается ST_NumGeometries с порогом — по умолчанию 1000. "
+            "Объект из тысяч частей (например, мультиполигон всей страны) "
+            "рисуется и обрабатывается как единое целое: одна операция "
+            "блокирует таблицу на минуты, а редактор QGIS зависает при "
+            "выделении такого объекта."
+        ),
+        fix=(
+            "Разделить объект: ST_Subdivide(geom, <число вершин>) с записью "
+            "частей отдельными строками."
+        ),
+        sql=(
+            "SELECT count(*) FROM {table}\n"
+            "WHERE {geom} IS NOT NULL AND NOT ST_IsEmpty({geom})\n"
+            "  AND ST_NumGeometries({geom}) > {max_parts}"
+        ),
+    ),
+    QualityCheck(
+        key="large_geometry",
+        title="Очень крупная геометрия",
+        summary="Размер геометрии в байтах выше порога из настроек.",
+        description=(
+            "Сравнивается pg_column_size(geom) с порогом — по умолчанию "
+            "1 МБ. Крупные объекты вычитываются целиком при любом обращении, "
+            "из-за чего карта и проверки качества замедляются, а TOAST-таблица "
+            "растёт быстрее данных."
+        ),
+        fix=(
+            "Упростить или разбить объект: ST_SimplifyPreserveTopology или "
+            "ST_Subdivide."
+        ),
+        sql=(
+            "SELECT count(*) FROM {table}\n"
+            "WHERE {geom} IS NOT NULL AND pg_column_size({geom}) > {max_bytes}"
+        ),
+    ),
+    QualityCheck(
+        key="polygon_holes",
+        title="Дыры в полигонах",
+        summary="У полигона есть внутренние кольца.",
+        description=(
+            "Проверка ищет полигоны с внутренними кольцами (ST_NumInteriorRings). "
+            "Иногда дыры нужны, но чаще это следствие плохого наложения или "
+            "обрезки: объект разваливается на кольцо, и площадь считается "
+            "меньше настоящей. Список таких объектов помогает быстро понять, "
+            "где геометрия испорчена."
+        ),
+        fix=(
+            "Проверить дыры на карте и при необходимости залить их: "
+            "ST_MakePolygon(ST_ExteriorRing(geom))."
+        ),
+        sql=(
+            "SELECT count(*) FROM {table}\n"
+            "WHERE {geom} IS NOT NULL AND NOT ST_IsEmpty({geom})\n"
+            "  AND GeometryType({geom}) IN ('POLYGON', 'MULTIPOLYGON')\n"
+            "  AND ST_NumInteriorRings(ST_GeometryN({geom}, 1)) > 0"
+        ),
     ),
 ]
 
@@ -524,6 +941,11 @@ ATTRIBUTE_CHECKS: List[AttributeCheck] = [
 ]
 
 
+# Сначала мгновенные проверки по каталогу, затем проход по данным таблицы:
+# так пользователь получает быстрые ответы, не дожидаясь тяжёлых запросов.
+QUALITY_CHECKS.sort(key=lambda check: 0 if check.from_catalog else 1)
+
+
 def check_by_key(key: str):
     """Найти проверку (пространственную или атрибутивную) по её ключу."""
 
@@ -536,15 +958,46 @@ def check_by_key(key: str):
     return None
 
 
-def build_sql(check: QualityCheck, table: SpatialTable) -> Optional[str]:
+def _sql_literal(value: str) -> str:
+    """Строковый литерал SQL с экранированием кавычек."""
+
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def build_catalog_sql(
+    check: QualityCheck,
+    table: SpatialTable,
+    thresholds: Optional[dict] = None,
+) -> Optional[str]:
+    """Собрать запрос проверки по каталогу; None — проверка не применима."""
+
+    template = check.catalog_sql
+    if not template:
+        return None
+    if thresholds is None:
+        thresholds = load_thresholds()
+    return template.format(
+        schema_lit=_sql_literal(table.schema),
+        name_lit=_sql_literal(table.name),
+        stale_days=int(thresholds.get("stale_days", 30)),
+    )
+
+
+def build_sql(
+    check: QualityCheck,
+    table: SpatialTable,
+    thresholds: Optional[dict] = None,
+) -> Optional[str]:
     """Собрать SQL проверки для таблицы; None — проверка не применима."""
 
     if check.from_catalog:
-        return None
+        return build_catalog_sql(check, table, thresholds)
     geometry_type = (table.geom_type or "").upper()
     if check.needs_type and geometry_type not in KNOWN_GEOMETRY_TYPES:
         return None
     if check.needs_srid and not table.srid:
+        return None
+    if check.only_geographic and table.srid != 4326:
         return None
     template = check.sql
     if check.sql_geographic and table.srid == 4326:
@@ -552,24 +1005,36 @@ def build_sql(check: QualityCheck, table: SpatialTable) -> Optional[str]:
     if not template:
         return None
     geom = quote_ident(table.geom_column or "geom") + "::geometry"
+    if thresholds is None:
+        thresholds = load_thresholds()
     return template.format(
         table=table.qualified,
         geom=geom,
         type=geometry_type,
         srid=int(table.srid or 0),
+        max_points=int(thresholds.get("max_points", 10000)),
+        min_area=float(thresholds.get("min_area", 1.0)),
+        min_area_geographic=float(thresholds.get("min_area_geographic", 1.0)),
+        max_parts=int(thresholds.get("max_parts", 1000)),
+        max_bytes=int(thresholds.get("max_bytes", 1000000)),
     )
 
 
-def run_check(db, table: SpatialTable, check: QualityCheck) -> Optional[int]:
+def run_check(
+    db,
+    table: SpatialTable,
+    check: QualityCheck,
+    thresholds: Optional[dict] = None,
+) -> Optional[int]:
     """Выполнить проверку для таблицы и вернуть число проблемных объектов.
 
     Возвращает None, если проверка к таблице не применима, и поднимает
     RuntimeError с текстом ошибки PostGIS, если запрос не выполнился.
     """
 
-    if check.from_catalog:
+    if check.key == CHECK_MISSING_INDEX:
         return 0 if table.has_spatial_index else 1
-    sql = build_sql(check, table)
+    sql = build_sql(check, table, thresholds)
     if sql is None:
         return None
     query = QSqlQuery(db)
@@ -939,11 +1404,13 @@ class QualityTask(QThread):
         tables: Sequence[SpatialTable],
         checks: Sequence[QualityCheck],
         parent=None,
+        thresholds: Optional[dict] = None,
     ) -> None:
         super().__init__(parent)
         self._connection = connection
         self._tables = list(tables)
         self._checks = list(checks)
+        self._thresholds = dict(thresholds) if thresholds else load_thresholds()
         self._cancel_requested = False
 
     def request_cancel(self) -> None:
@@ -968,7 +1435,7 @@ class QualityTask(QThread):
                     count = None
                     error = ""
                     try:
-                        count = run_check(db, table, check)
+                        count = run_check(db, table, check, self._thresholds)
                     except Exception as exc:  # noqa: BLE001
                         error = str(exc)
                     self.check_done.emit(check.key, table.full_name, count, error)

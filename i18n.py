@@ -35,7 +35,6 @@ EN_TRANSLATIONS = {
     "Элементов": "Features",
     "Размер": "Size",
     "Статистика": "Statistics",
-    "Соединение": "Connection",
     "Подключения": "Connections",
     "Соединения": "Connections",
     "Информация": "Information",
@@ -85,9 +84,6 @@ EN_TRANSLATIONS = {
     "Драйвер QPSQL не найден": "The QPSQL driver was not found",
     "PostGIS не установлен в базе": "PostGIS is not installed in the database",
     "Не удалось открыть соединение": "Failed to open the connection",
-    "Ошибка запроса": "Query error",
-
-    # Таблицы
     "из": "of",
     "таблиц": "tables",
     "таблица": "table",
@@ -401,9 +397,6 @@ EN_TRANSLATIONS = {
 
     # Качество атрибутивных данных
     "Качество атрибутивных данных": "Attribute data quality",
-    "Дождитесь окончания текущих проверок": (
-        "Wait until the running checks finish"
-    ),
     "Пустые значения NULL": "NULL values",
     "В атрибутивных столбцах встречаются значения NULL.": (
         "Attribute columns contain NULL values."
@@ -598,6 +591,188 @@ EN_TRANSLATIONS = {
     "UPDATE ... SET поле = NULL WHERE поле < DATE '1900-01-01'.": (
         "Fix the dates manually or replace the impossible values with NULL: "
         "UPDATE ... SET field = NULL WHERE field < DATE '1900-01-01'."
+    ),
+
+    # Пороги проверок качества
+    "Пороги проверок": "Check thresholds",
+    "Пороги": "Thresholds",
+    "Максимум вершин в объекте": "Maximum vertices per feature",
+    "Минимальная площадь полигона": "Minimum polygon area",
+    "Минимальная площадь полигона, м²": "Minimum polygon area, m²",
+    "Максимум частей в объекте": "Maximum parts per feature",
+    "Максимум размера геометрии, байт": "Maximum geometry size, bytes",
+    "Устаревание статистики, дней": "Statistics staleness, days",
+    "Пороги применяются к проверкам «Слишком много вершин», "
+    "«Микрообъекты», «Слишком много частей», «Очень крупная "
+    "геометрия» и «Устаревшая статистика таблицы».": (
+        "The thresholds apply to the checks \"Too many vertices\", "
+        "\"Tiny polygons\", \"Too many parts\", \"Very large geometry\" "
+        "and \"Stale table statistics\"."
+    ),
+    "Тип геометрии не задан": "Geometry type is not specified",
+    "Столбец объявлен как geometry без типа и SRID.": (
+        "The column is declared as geometry without type and SRID."
+    ),
+    "SRID не зарегистрирован": "SRID is not registered",
+    "Кода SRID таблицы нет в spatial_ref_sys.": (
+        "The table SRID is missing from spatial_ref_sys."
+    ),
+    "Геометрия допускает NULL": "Geometry allows NULL",
+    "У геометрического столбца нет ограничения NOT NULL.": (
+        "The geometry column has no NOT NULL constraint."
+    ),
+    "Индекс по геометрии не GiST": "The geometry index is not GiST",
+    "Пространственный столбец индексирован не GiST и не SP-GiST.": (
+        "The spatial column is indexed with something other than GiST or SP-GiST."
+    ),
+    "Лишние пространственные индексы": "Redundant spatial indexes",
+    "По столбцу геометрии построено больше одного GiST-индекса.": (
+        "The geometry column has more than one GiST index."
+    ),
+    "Устаревшая статистика таблицы": "Stale table statistics",
+    "ANALYZE не запускался дольше заданного числа дней.": (
+        "ANALYZE has not run for longer than the configured number of days."
+    ),
+    "Самопересекающиеся линии": "Self-intersecting lines",
+    "Линия проходит через собственную точку.": (
+        "The line passes through its own point."
+    ),
+    "Перепутаны широта и долгота": "Swapped latitude and longitude",
+    "Для SRID 4326 координаты похожи на перевёрнутые оси.": (
+        "For SRID 4326 the coordinates look like swapped axes."
+    ),
+    "Слишком много вершин": "Too many vertices",
+    "Объект содержит больше вершин, чем задано порогом.": (
+        "The feature has more vertices than the configured threshold."
+    ),
+    "Микрообъекты": "Tiny polygons",
+    "Площадь полигона меньше порога из настроек.": (
+        "The polygon area is below the configured threshold."
+    ),
+    "Лишняя размерность Z или M": "Extra Z or M dimension",
+    "Геометрия имеет Z или M там, где ожидается плоская 2D.": (
+        "The geometry has Z or M where a flat 2D is expected."
+    ),
+    "Коллекции геометрий": "Geometry collections",
+    "Объект имеет тип GEOMETRYCOLLECTION.": (
+        "The feature is a GEOMETRYCOLLECTION."
+    ),
+    "Слишком много частей в объекте": "Too many parts per feature",
+    "Число частей мультигеометрии выше порога из настроек.": (
+        "The number of parts in the multi-geometry is above the configured threshold."
+    ),
+    "Очень крупная геометрия": "Very large geometry",
+    "Размер геометрии в байтах выше порога из настроек.": (
+        "The geometry size in bytes is above the configured threshold."
+    ),
+    "Дыры в полигонах": "Holes in polygons",
+    "У полигона есть внутренние кольца.": "The polygon has interior rings.",
+
+    "Сведения берутся из системного каталога: у геометрического столбца нет ограничения типа (typmod), поэтому в таблице могут оказаться точки, линии и полигоны одновременно. Без ограничения типа PostGIS не проверяет корректность вставки, а QGIS не может построить оформление и легенду по типу слоя. Проверка мгновенная: данные таблицы не читаются.": (
+        "The information comes from the system catalog: the geometry column has no type constraint (typmod), so the table may hold points, lines and polygons at once. Without a type constraint PostGIS does not validate inserts and QGIS cannot build styling and a legend from the layer type. The check is instant: the table data is not read."
+    ),
+    "Задать тип и SRID ограничением: ALTER TABLE ... ALTER COLUMN geom TYPE geometry(Point, 4326) USING geom::geometry(Point, 4326).": (
+        "Set the type and SRID with a constraint: ALTER TABLE ... ALTER COLUMN geom TYPE geometry(Point, 4326) USING geom::geometry(Point, 4326)."
+    ),
+    "Каталог PostGIS сообщает SRID, которого нет в spatial_ref_sys: PostGIS не знает параметров этой системы координат. Объекты отображаются в неизвестной системе, ST_Transform невозможен, а расчёт площадей и длин даёт неверные числа. Проверка выполняется по каталогу и не читает данные.": (
+        "The PostGIS catalog reports an SRID that is missing from spatial_ref_sys: PostGIS does not know the parameters of that coordinate system. Features are drawn in an unknown system, ST_Transform is impossible and area and length calculations give wrong numbers. The check runs over the catalog and does not read the data."
+    ),
+    "Добавить систему координат в spatial_ref_sys или пересоздать столбец с корректным SRID: ALTER TABLE ... ALTER COLUMN geom TYPE geometry(Point, <SRID>) USING ST_SetSRID(geom, <SRID>).": (
+        "Add the coordinate system to spatial_ref_sys or recreate the column with a valid SRID: ALTER TABLE ... ALTER COLUMN geom TYPE geometry(Point, <SRID>) USING ST_SetSRID(geom, <SRID>)."
+    ),
+    "Каталог показывает, что столбец геометрии допускает пустые значения. Пока ограничения нет, любой импорт или ручная вставка может добавить объект без координат, и такие строки всплывут позже как «пустая геометрия». Ограничение ставится один раз и закрывает эту возможность. Проверка мгновенная.": (
+        "The catalog shows that the geometry column allows empty values. While the constraint is missing, any import or manual insert can add a feature without coordinates, and such rows show up later as empty geometry. The constraint is set once and closes that possibility. The check is instant."
+    ),
+    "Убедиться, что пустых объектов нет, и запретить их: ALTER TABLE ... ALTER COLUMN geom SET NOT NULL.": (
+        "Make sure there are no empty features and forbid them: ALTER TABLE ... ALTER COLUMN geom SET NOT NULL."
+    ),
+    "По столбцу геометрии построен индекс другого типа (btree, hash) — PostGIS не использует его в пространственных операторах. Такой индекс занимает место и замедляет вставку, но не ускоряет фильтры ST_Intersects, ST_DWithin и поиск по рамке. Сведения берутся из каталога, данные не читаются.": (
+        "The geometry column has an index of another type (btree, hash) which PostGIS does not use for spatial operators. Such an index takes space and slows inserts down but does not speed up ST_Intersects, ST_DWithin or bounding box searches. The information comes from the catalog, the data is not read."
+    ),
+    "Удалить бесполезный индекс и построить GiST: DROP INDEX ...; CREATE INDEX ... ON ... USING gist (geom).": (
+        "Drop the useless index and build a GiST one: DROP INDEX ...; CREATE INDEX ... ON ... USING gist (geom)."
+    ),
+    "Каталог показывает два и более GiST-индекса по одному и тому же столбцу геометрии. Планировщик использует только один, а каждый лишний занимает диск и замедляет каждую вставку и обновление. Обычно так остаётся после экспериментов с индексами. Проверка мгновенная, данные не читаются.": (
+        "The catalog shows two or more GiST indexes on the same geometry column. The planner uses only one of them, while every extra index takes disk space and slows every insert and update. This usually stays behind after index experiments. The check is instant and does not read the data."
+    ),
+    "Оставить один индекс и удалить остальные: DROP INDEX ... для каждого лишнего GiST-индекса.": (
+        "Keep one index and drop the rest: DROP INDEX ... for every extra GiST index."
+    ),
+    "PostgreSQL хранит дату последнего ANALYZE. Если она старше порога из настроек (по умолчанию 30 дней) или её нет, планировщик оценивает количество строк по устаревшим данным: пространственные фильтры начинают читать таблицу целиком, а сводки и проверки качества идут в разы дольше. Сведения берутся из pg_stat_user_tables, данные не читаются.": (
+        "PostgreSQL stores the date of the last ANALYZE. If it is older than the threshold from the settings (30 days by default) or missing, the planner estimates row counts from outdated data: spatial filters start reading the whole table and summaries and quality checks take many times longer. The information comes from pg_stat_user_tables, the data is not read."
+    ),
+    "Обновить статистику: ANALYZE <схема>.<таблица>; при частых изменениях проверить настройки autovacuum.": (
+        "Refresh the statistics: ANALYZE <schema>.<table>; with frequent changes check the autovacuum settings."
+    ),
+    "Проверка ищет линии, которые не являются простыми: контур заходит сам в себя или линия дважды проходит через одну точку. ST_IsValid для линий это не проверяет, поэтому обычная проверка валидности такие объекты пропускает. Непростые линии дают некорректную длину, ломают маршрутизацию и топологические операции.": (
+        "The check looks for lines that are not simple: the path crosses itself or the line passes through the same point twice. ST_IsValid does not test this for lines, so the usual validity check skips such features. Non-simple lines give a wrong length and break routing and topology operations."
+    ),
+    "Разрезать линию на простые части: ST_LineMerge или ST_Node(geom), затем проверить результат ST_IsSimple.": (
+        "Split the line into simple parts: ST_LineMerge or ST_Node(geom), then verify the result with ST_IsSimple."
+    ),
+    "Для географических данных проверяется признак перевёрнутых осей: долгота по модулю не больше 90, а широта больше 90 — значит координаты вставлены как (широта, долгота). Такие объекты уезжают на другой конец планеты, и «Приблизить к слою» показывает весь мир. Проверка выполняется только для SRID 4326.": (
+        "For geographic data the check looks for swapped axes: the longitude modulo is at most 90 while the latitude is above 90, which means the coordinates were inserted as (latitude, longitude). Such features move to the other side of the planet and Zoom to layer shows the whole world. The check runs only for SRID 4326."
+    ),
+    "Поменять координаты местами: UPDATE ... SET geom = ST_FlipCoordinates(geom) WHERE ... — только для найденных объектов.": (
+        "Swap the coordinates: UPDATE ... SET geom = ST_FlipCoordinates(geom) WHERE ... — only for the found features."
+    ),
+    "Сравнивается число вершин объекта (ST_NPoints) с порогом из настроек — по умолчанию 10 000. Такие объекты появляются после сложения геометрий без упрощения и делают слой тяжёлым: QGIS долго рисует карту, медленно работают выборки и экспорт. Порог задаётся на вкладке проверок.": (
+        "The number of vertices (ST_NPoints) is compared with the threshold from the settings — 10 000 by default. Such features appear after merging geometries without simplification and make the layer heavy: QGIS draws the map slowly and selections and exports are slow. The threshold is set on the checks tab."
+    ),
+    "Упростить геометрию: UPDATE ... SET geom = ST_SimplifyPreserveTopology(geom, <допуск>) или ST_Subdivide для очень длинных объектов.": (
+        "Simplify the geometry: UPDATE ... SET geom = ST_SimplifyPreserveTopology(geom, <tolerance>) or ST_Subdivide for very long features."
+    ),
+    "Проверка ищет полигоны с площадью меньше порога — по умолчанию 1 квадратная единица. Такие «осколки» обычно остаются после обрезки и наложения слоёв, засоряют атрибутивные таблицы и попадают в отчёты как полноценные объекты. Для географических данных площадь считается в квадратных метрах.": (
+        "The check looks for polygons whose area is below the threshold — 1 square unit by default. Such splinters usually stay behind after clipping and overlaying layers, clutter the attribute table and end up in reports as full features. For geographic data the area is measured in square metres."
+    ),
+    "Удалить осколки или объединить их с соседями: DELETE FROM ... WHERE ST_Area(geom) < <порог>.": (
+        "Delete the splinters or merge them with neighbours: DELETE FROM ... WHERE ST_Area(geom) < <threshold>."
+    ),
+    "Проверка ищет объекты с третьей координатой или измерением M (ST_NDims и ST_Zmflag). Разная размерность в одном столбце ломает сравнение геометрий, мешает экспорту в простые форматы и даёт неожиданные результаты в операциях наложения.": (
+        "The check looks for features with a third coordinate or an M measure (ST_NDims and ST_Zmflag). Mixed dimensionality in one column breaks geometry comparison, prevents export to simple formats and gives unexpected results in overlay operations."
+    ),
+    "Привести объекты к 2D: UPDATE ... SET geom = ST_Force2D(geom), затем задать тип столбца geometry(<Тип>, <SRID>).": (
+        "Bring the features to 2D: UPDATE ... SET geom = ST_Force2D(geom), then set the column type to geometry(<Type>, <SRID>)."
+    ),
+    "Проверка ищет объекты-коллекции, в которых смешаны точки, линии и полигоны. Коллекции не поддерживаются частью операций PostGIS и плохо отображаются в QGIS: оформление задаётся по одному типу, экспорт в Shapefile такие объекты теряет.": (
+        "The check looks for collection features that mix points, lines and polygons. Collections are not supported by part of the PostGIS operations and are drawn poorly in QGIS: styling is set per single type and a Shapefile export loses such features."
+    ),
+    "Разобрать коллекции на однотипные объекты: ST_CollectionExtract(geom, 1|2|3) или ST_Dump с созданием отдельных строк.": (
+        "Split the collections into single-type features: ST_CollectionExtract(geom, 1|2|3) or ST_Dump writing the parts as separate rows."
+    ),
+    "Сравнивается ST_NumGeometries с порогом — по умолчанию 1000. Объект из тысяч частей (например, мультиполигон всей страны) рисуется и обрабатывается как единое целое: одна операция блокирует таблицу на минуты, а редактор QGIS зависает при выделении такого объекта.": (
+        "ST_NumGeometries is compared with the threshold — 1000 by default. A feature of thousands of parts (for example a multipolygon of a whole country) is drawn and processed as a whole: one operation locks the table for minutes and the QGIS editor freezes when such a feature is selected."
+    ),
+    "Разделить объект: ST_Subdivide(geom, <число вершин>) с записью частей отдельными строками.": (
+        "Split the feature: ST_Subdivide(geom, <vertex count>) writing the parts as separate rows."
+    ),
+    "Сравнивается pg_column_size(geom) с порогом — по умолчанию 1 МБ. Крупные объекты вычитываются целиком при любом обращении, из-за чего карта и проверки качества замедляются, а TOAST-таблица растёт быстрее данных.": (
+        "pg_column_size(geom) is compared with the threshold — 1 MB by default. Large features are read entirely on any access, so the map and the quality checks slow down and the TOAST table grows faster than the data."
+    ),
+    "Упростить или разбить объект: ST_SimplifyPreserveTopology или ST_Subdivide.": (
+        "Simplify or split the feature: ST_SimplifyPreserveTopology or ST_Subdivide."
+    ),
+    "Проверка ищет полигоны с внутренними кольцами (ST_NumInteriorRings). Иногда дыры нужны, но чаще это следствие плохого наложения или обрезки: объект разваливается на кольцо, и площадь считается меньше настоящей. Список таких объектов помогает быстро понять, где геометрия испорчена.": (
+        "The check looks for polygons with interior rings (ST_NumInteriorRings). Sometimes holes are intended, but more often they are the result of a bad overlay or clipping: the feature falls apart into a ring and the area is counted as smaller than it is. The list of such features shows quickly where the geometry is damaged."
+    ),
+    "Проверить дыры на карте и при необходимости залить их: ST_MakePolygon(ST_ExteriorRing(geom)).": (
+        "Inspect the holes on the map and fill them in when needed: ST_MakePolygon(ST_ExteriorRing(geom))."
+    ),
+    "Дубли по атрибутам": (
+        "Attribute duplicates"
+    ),
+    "Сохранить": (
+        "Save"
+    ),
+
+    "Полные дубли строк, дубли составного ключа, совпадения без учёта регистра и частичные вхождения.": (
+        "Exact duplicate rows, composite key duplicates, matches ignoring case and partial matches."
+    ),
+    "Одна проверка объединяет четыре вида дублей по атрибутам: полные дубли строк (совпадают все атрибутивные столбцы), дубли составного ключа (совпадают все текстовые столбцы), совпадения без учёта регистра и лишних пробелов («Москва» и «москва ») и частичные вхождения — когда значение целиком входит в другое значение, например «ЯмалоНенецкий автономный окру» входит в «ЯмалоНенецкий автономный округ». Для частичных вхождений показывается процент вхождения — доля длины короткого значения в длинном. Дубли завышают статистику, дают двойные подписи на карте и мешают объединять данные из разных источников. Подробный список с процентами открывается двойным щелчком по ячейке.": (
+        "One check unites four kinds of attribute duplicates: exact duplicate rows (all attribute columns match), composite key duplicates (all text columns match), matches ignoring case and repeated spaces (\"Moscow\" and \"moscow \") and partial matches, when one value is contained in another, for example \"Yamalo-Nenets autonomous okru\" is contained in \"Yamalo-Nenets autonomous okrug\". Partial matches carry the match percentage, the share of the shorter value in the longer one. Duplicates inflate statistics, double the map labels and get in the way when data from different sources is merged. The detailed list with percentages opens on a double click on the cell."
+    ),
+    "Просмотреть подробный список двойным щелчком по ячейке и объединить или удалить лишние записи; для совпадений без учёта регистра привести значения к единому написанию, для частичных вхождений — заменить обрезанное значение полным.": (
+        "Open the detailed list with a double click on the cell and merge or delete the extra records; for case-insensitive matches bring the values to one spelling, for partial matches replace the truncated value with the full one."
     ),
 
     # Качество по НСИ

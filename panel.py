@@ -72,10 +72,13 @@ from .nsi import (
 )
 from .quality import (
     ATTRIBUTE_CHECKS,
+    THRESHOLD_DEFAULTS,
     QUALITY_CHECKS,
     AttributeTask,
     QualityTask,
     check_by_key,
+    load_thresholds,
+    save_thresholds,
 )
 from .stats import (
     build_geometry_type_distribution,
@@ -99,6 +102,75 @@ GEO_TYPE_COLORS = {}
 
 def _geometry_label(table: SpatialTable) -> str:
     return table.geom_type
+
+
+class ThresholdsDialog(QDialog):
+    """Пороги проверок качества: числа, выше или ниже которых объект считается проблемным."""
+
+    FIELDS = (
+        ("max_points", "Максимум вершин в объекте", 1, 100000000),
+        ("min_area", "Минимальная площадь полигона", 0, 1000000000),
+        ("min_area_geographic", "Минимальная площадь полигона, м²", 0, 1000000000),
+        ("max_parts", "Максимум частей в объекте", 1, 1000000),
+        ("max_bytes", "Максимум размера геометрии, байт", 1024, 1000000000),
+        ("stale_days", "Устаревание статистики, дней", 1, 3650),
+    )
+
+    def __init__(self, parent) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("ZGeo-PG — " + tr("Пороги проверок"))
+        self.setMinimumWidth(420)
+        layout = QVBoxLayout(self)
+        self._labels: List[Tuple[QLabel, str]] = []
+        self._spins: Dict[str, QSpinBox] = {}
+        values = load_thresholds()
+        form = QVBoxLayout()
+        for name, label, minimum, maximum in self.FIELDS:
+            row = QHBoxLayout()
+            caption = QLabel(label)
+            caption.setFixedWidth(260)
+            self._labels.append((caption, label))
+            spin = QSpinBox()
+            spin.setRange(minimum, maximum)
+            spin.setValue(int(values.get(name, THRESHOLD_DEFAULTS[name])))
+            self._spins[name] = spin
+            row.addWidget(caption)
+            row.addWidget(spin, 1)
+            form.addLayout(row)
+        layout.addLayout(form)
+
+        self._hint = QLabel()
+        self._hint.setWordWrap(True)
+        layout.addWidget(self._hint)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        self._save_button = QPushButton()
+        self._save_button.clicked.connect(self._save)
+        buttons.addWidget(self._save_button)
+        self._cancel_button = QPushButton()
+        self._cancel_button.clicked.connect(self.reject)
+        buttons.addWidget(self._cancel_button)
+        layout.addLayout(buttons)
+        self.retranslate()
+
+    def retranslate(self) -> None:
+        for caption, source in self._labels:
+            caption.setText(tr(source))
+        self._save_button.setText(tr("Сохранить"))
+        self._cancel_button.setText(tr("Отмена"))
+        self._hint.setText(
+            tr(
+                "Пороги применяются к проверкам «Слишком много вершин», "
+                "«Микрообъекты», «Слишком много частей», «Очень крупная "
+                "геометрия» и «Устаревшая статистика таблицы»."
+            )
+        )
+
+    def _save(self) -> None:
+        save_thresholds({name: spin.value() for name, spin in self._spins.items()})
+        self.accept()
+
 
 
 class DuplicateDetailsDialog(QDialog):
@@ -298,7 +370,19 @@ class QualityTabPage(QWidget):
         self.export_button.clicked.connect(self._on_export)
         self.export_button.setEnabled(False)
         buttons.addWidget(self.export_button)
+        # Пороги есть только у проверок пространственных данных.
+        self._thresholds_button = None
+        if any(getattr(check, "sql", None) for check in self._checks):
+            self._thresholds_button = QPushButton()
+            self._thresholds_button.clicked.connect(self._edit_thresholds)
+            buttons.addWidget(self._thresholds_button)
         layout.addLayout(buttons)
+
+    def _edit_thresholds(self) -> None:
+        """Открыть окно порогов проверок."""
+
+        dialog = ThresholdsDialog(self)
+        dialog.exec()
 
     def retranslate(self) -> None:
         """Обновить все подписи вкладки при смене языка."""
@@ -308,6 +392,9 @@ class QualityTabPage(QWidget):
         self.cancel_button.setText(tr("Прервать"))
         self.export_button.setText(tr("Экспорт"))
         self.export_button.setToolTip(tr("Экспорт результатов проверок"))
+        if self._thresholds_button is not None:
+            self._thresholds_button.setText(tr("Пороги"))
+            self._thresholds_button.setToolTip(tr("Пороги проверок"))
         for check in self._checks:
             self._boxes[check.key].setText(tr(check.title))
             self._boxes[check.key].setToolTip(tr(check.summary))
@@ -384,7 +471,13 @@ class QualityTabPage(QWidget):
         self._state = ("running", "")
         self._build_table(checks)
 
-        self._task = self._task_class(host._conn, list(host._tables), checks, self)
+        try:
+            self._task = self._task_class(
+                host._conn, list(host._tables), checks, self, load_thresholds()
+            )
+        except TypeError:
+            # Атрибутные проверки не используют пороги.
+            self._task = self._task_class(host._conn, list(host._tables), checks, self)
         self._task.check_started.connect(self._on_check_started)
         self._task.check_done.connect(self._on_check_done)
         if hasattr(self._task, "check_details"):
