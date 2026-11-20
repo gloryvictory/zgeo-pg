@@ -11,7 +11,7 @@ from qgis.PyQt.QtWidgets import QFileDialog, QMenu, QMessageBox, QTableWidget
 from .excel_export import CellValue, SheetSpec, write_xlsx_sheets
 from .explorer import reveal_files
 from .formatting import format_size
-from .html_export import write_html_sections, write_html_table
+from .html_export import write_html_report, write_html_sections, write_html_table
 from .i18n import tr
 
 FORMAT_XLSX = "xlsx"
@@ -190,6 +190,82 @@ def export_sections_with_dialog(
             )
         else:
             write_xlsx_sheets(path, prepared)
+    except Exception as error:  # noqa: BLE001
+        QMessageBox.critical(
+            parent,
+            "ZGeo-PG",
+            tr("Не удалось экспортировать таблицу:\n{}", error),
+        )
+        return None
+
+    errors = reveal_files([path])
+    if errors:
+        QMessageBox.warning(
+            parent,
+            "ZGeo-PG",
+            tr(
+                "Таблица экспортирована:\n{}\n\n"
+                "Не удалось открыть проводник:\n{}",
+                path,
+                "\n".join(errors),
+            ),
+        )
+    return path
+
+
+def export_report_with_dialog(
+    parent,
+    info: Sequence[Sequence[CellValue]],
+    stats: Sequence[Sequence[CellValue]],
+    sections: Sequence[Tuple[str, Sequence[str], Iterable[Sequence[CellValue]]]],
+    default_filename: str,
+    title: str,
+    export_format: str = FORMAT_XLSX,
+) -> Optional[Path]:
+    """Сохранить отчёт: листы Excel по разделам или страница HTML с оглавлением.
+
+    Args:
+        info: Строки таблицы «что выбрано».
+        stats: Строки таблицы статистики.
+        sections: Разделы со значениями: (имя, заголовки, строки).
+    """
+
+    prepared = [(name, list(headers), list(rows)) for name, headers, rows in sections]
+    if not prepared:
+        return None
+
+    html = export_format == FORMAT_HTML
+    suffix = ".html" if html else ".xlsx"
+    documents = QStandardPaths.writableLocation(
+        QStandardPaths.StandardLocation.DocumentsLocation
+    )
+    start_dir = Path(documents) if documents else Path.home()
+    selected, _filter = QFileDialog.getSaveFileName(
+        parent,
+        tr("Экспорт в HTML") if html else tr("Экспорт в Excel"),
+        str(_with_suffix(start_dir / default_filename, suffix)),
+        "HTML (*.html)" if html else "Excel (*.xlsx)",
+    )
+    if not selected:
+        return None
+
+    path = _with_suffix(selected, suffix)
+    try:
+        if html:
+            write_html_report(
+                path,
+                title,
+                list(info),
+                list(stats),
+                prepared,
+                footer=tr("ZGeo-PG — каталог пространственных данных PostGIS"),
+            )
+        else:
+            sheets: list = []
+            if stats:
+                sheets.append((tr("Статистика"), [tr("Категория"), tr("Количество")], list(stats)))
+            sheets.extend(prepared)
+            write_xlsx_sheets(path, sheets)
     except Exception as error:  # noqa: BLE001
         QMessageBox.critical(
             parent,

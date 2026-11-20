@@ -86,6 +86,7 @@ from .table_export import (
     FORMAT_HTML,
     FORMAT_XLSX,
     ask_export_format,
+    export_report_with_dialog,
     export_rows_with_dialog,
     export_sections_with_dialog,
     export_table_with_dialog,
@@ -926,7 +927,35 @@ class NsiTabPage(QWidget):
         self._host._set_status(tr(name) + ": " + str(len(values)))
 
     # --------------------------------------------------------------- экспорт
+    def _sources_info(self) -> List[List[object]]:
+        """Что выбрано в списках: соединение, таблица и поле каждой стороны."""
+
+        return [
+            [
+                tr("Соединение"),
+                self._left._conn_combo.currentText(),
+                self._right._conn_combo.currentText(),
+            ],
+            [
+                tr("Таблица"),
+                self._left._table_combo.currentText(),
+                self._right._table_combo.currentText(),
+            ],
+            [
+                tr("Поле"),
+                self._left._column_combo.currentText(),
+                self._right._column_combo.currentText(),
+            ],
+        ]
+
+    def _stats_rows(self) -> List[List[object]]:
+        """Статистика сверки: категория и количество значений."""
+
+        return [[name, len(values)] for name, values in self._categories()]
+
     def _on_export(self) -> None:
+        """Экспорт сверки: листы Excel по категориям или HTML-отчёт."""
+
         if not self._comparison.total:
             QMessageBox.information(
                 self, "ZGeo-PG", tr("Сначала выполните сравнение")
@@ -940,15 +969,16 @@ class NsiTabPage(QWidget):
             for name, values in self._categories()
         ]
         suffix = "html" if export_format == FORMAT_HTML else "xlsx"
-        export_sections_with_dialog(
+        export_report_with_dialog(
             self,
+            self._sources_info(),
+            self._stats_rows(),
             sections,
             "zgeo-pg_nsi_compare." + suffix,
             tr("Качество по НСИ"),
             export_format=export_format,
         )
 
-    # -------------------------------------------------------------- сервис
     def report_error(self, message: str) -> None:
         """Показать ошибку и в строке вкладки, и в статусной строке панели."""
 

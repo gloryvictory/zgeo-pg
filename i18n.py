@@ -593,6 +593,10 @@ EN_TRANSLATIONS = {
     "Сравнить": "Compare",
     "Значение": "Value",
     "Категория": "Category",
+    "Что выбрано": "Selected sources",
+    "Параметр": "Parameter",
+    "Левая панель": "Left panel",
+    "Правая панель": "Right panel",
     "Количество": "Count",
     "Совпало": "Matched",
     "Есть в левой панели, но нет в правой": (

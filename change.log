@@ -3,6 +3,27 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.28.0] - 2026-11-18
+
+### Added
+
+- `html_export.write_html_report()` builds a report page: a sticky link panel on
+  top, then "Selected sources", "Statistics" and one table per category.
+- `table_export.export_report_with_dialog()` saves the same report as Excel
+  (a "Statistics" sheet plus one sheet per category) or HTML.
+
+### Changed
+
+- The reference data export lists what was chosen in both panels (connection,
+  table, field) before the statistics and the values.
+- The Excel file now always contains the "Statistics" sheet with the category
+  counts, so the workbook matches the HTML page.
+
+### Fixed
+
+- `write_html_sections()` and the report produced a nested `<tr><tr>` in table
+  headers because the header row was wrapped twice.
+
 ## [0.27.0] - 2026-11-18
 
 ### Changed

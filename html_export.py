@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Optional, Sequence, Tuple
 
 from .formatting import format_number
+from .i18n import tr
 
 _PAGE = """<!DOCTYPE html>
 <html lang="{lang}">
@@ -145,6 +146,158 @@ p.footer {{
 """
 
 
+
+_REPORT_PAGE = """<!DOCTYPE html>
+<html lang="{lang}">
+<head>
+<meta charset="utf-8">
+<title>{title}</title>
+<style>
+body {{
+    font-family: "Segoe UI", "Noto Sans", Arial, sans-serif;
+    font-size: 13px;
+    color: #202020;
+    margin: 18px;
+}}
+h1 {{
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 12px;
+}}
+h2 {{
+    font-size: 14px;
+    font-weight: 600;
+    margin: 22px 0 8px;
+    scroll-margin-top: 56px;
+}}
+nav.toc {{
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #f4f6f9;
+    border: 1px solid #d5dce4;
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin-bottom: 16px;
+}}
+nav.toc a {{
+    color: #1f4e79;
+    text-decoration: none;
+    margin-right: 14px;
+    white-space: nowrap;
+}}
+nav.toc a:hover {{
+    text-decoration: underline;
+}}
+table {{
+    border-collapse: collapse;
+    min-width: 40%;
+}}
+th, td {{
+    border: 1px solid #c8c8c8;
+    padding: 4px 8px;
+    text-align: left;
+    vertical-align: top;
+}}
+th {{
+    background: #eef2f7;
+    font-weight: 600;
+    white-space: nowrap;
+}}
+tbody tr:nth-child(even) td {{
+    background: #fafafa;
+}}
+td.number {{
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}}
+p.footer {{
+    color: #707070;
+    font-size: 11px;
+    margin-top: 24px;
+}}
+</style>
+</head>
+<body>
+<h1>{title}</h1>
+<nav class="toc">{toc}</nav>
+{body}
+<p class="footer">{footer}</p>
+</body>
+</html>
+"""
+
+
+def write_html_report(
+    path: Path,
+    title: str,
+    info: Sequence[Sequence],
+    stats: Sequence[Sequence],
+    sections: Sequence[Tuple[str, Sequence[str], Sequence[Sequence]]],
+    footer: str = "",
+    lang: str = "ru",
+) -> Path:
+    """Записать отчёт: панель ссылок, что выбрано, статистика и значения.
+
+    Args:
+        info: Строки таблицы «что выбрано» (параметр и значения сторон).
+        stats: Строки таблицы статистики (категория и количество).
+        sections: Разделы со значениями: (имя, заголовки, строки).
+    """
+
+    path = Path(path)
+    if path.suffix.lower() not in (".html", ".htm"):
+        path = path.with_suffix(".html")
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    def table(headers: Sequence[str], rows: Sequence[Sequence]) -> str:
+        # _row_html уже оборачивает ячейки в <tr>, второй раз не нужно.
+        body = "\n".join(_row_html(row) for row in rows)
+        return (
+            "<table>\n<thead>\n{}\n</thead>\n<tbody>\n{}\n"
+            "</tbody>\n</table>"
+        ).format(_row_html(headers, tag="th"), body)
+
+    blocks = []
+    links = []
+
+    if info:
+        links.append('<a href="#sources">{}</a>'.format(escape(tr("Что выбрано"))))
+        blocks.append(
+            '<h2 id="sources">{}</h2>\n{}'.format(
+                escape(tr("Что выбрано")),
+                table([tr("Параметр"), tr("Левая панель"), tr("Правая панель")], info),
+            )
+        )
+
+    if stats:
+        links.append('<a href="#stats">{}</a>'.format(escape(tr("Статистика"))))
+        blocks.append(
+            '<h2 id="stats">{}</h2>\n{}'.format(
+                escape(tr("Статистика")),
+                table([tr("Категория"), tr("Количество")], stats),
+            )
+        )
+
+    for index, (name, headers, rows) in enumerate(sections):
+        anchor = "section-{}".format(index + 1)
+        links.append('<a href="#{}">{}</a>'.format(anchor, escape(name)))
+        blocks.append(
+            '<h2 id="{}">{}</h2>\n{}'.format(anchor, escape(name), table(headers, rows))
+        )
+
+    page = _REPORT_PAGE.format(
+        lang=escape(lang or "ru"),
+        title=escape(title or ""),
+        toc="\n".join(links),
+        body="\n".join(blocks),
+        footer=escape(footer or ""),
+    )
+    path.write_text(page, encoding="utf-8")
+    return path
+
+
 def write_html_sections(
     path: Path,
     sections: Sequence[Tuple[str, Sequence[str], Sequence[Sequence]]],
@@ -167,7 +320,7 @@ def write_html_sections(
     for name, headers, rows in sections:
         body_rows = [_row_html(row) for row in rows]
         blocks.append(
-            '<h2>{}</h2>\n<table>\n<thead>\n<tr>{}</tr>\n</thead>\n'
+            '<h2>{}</h2>\n<table>\n<thead>\n{}\n</thead>\n'
             "<tbody>\n{}\n</tbody>\n</table>".format(
                 escape(name),
                 _row_html(headers, tag="th"),
