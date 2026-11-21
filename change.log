@@ -3,6 +3,22 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.37.0] - 2026-11-18
+
+### Added
+
+- Right-click menu on the spatial quality results: "Загрузить в текущий
+  проект и показать на карте" adds the table of the clicked row as a PostGIS
+  layer to the current QGIS project and zooms the canvas to its extent.
+- \`layer_loader.py\` builds the \`QgsDataSourceUri\` from the panel connection,
+  reuses a layer that is already in the project and reports a readable error
+  when the table cannot be opened.
+
+### Changed
+
+- The results table keeps a row-to-table map, so a row resolves to its
+  \`SpatialTable\` without scanning the catalog again.
+
 ## [0.36.0] - 2026-11-18
 
 ### Added

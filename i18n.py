@@ -882,6 +882,16 @@ EN_TRANSLATIONS = {
         "The thresholds apply to the checks \"Too many vertices\", \"Tiny polygons\", \"Tiny lines\", \"Too many parts\", \"Very large geometry\", \"Stale table statistics\", \"Near-duplicate geometries\", \"Slivers (narrow gaps)\" and \"Table bloat\"."
     ),
 
+    "Загрузить в текущий проект и показать на карте": (
+        "Load into the current project and show on the map"
+    ),
+    "Не удалось загрузить слой": "Failed to load the layer",
+    "Слой уже в проекте": "The layer is already in the project",
+    "Слой добавлен на карту": "The layer was added to the map",
+    "Нет доступа к окну QGIS": "No access to the QGIS window",
+    "Не открыт проект QGIS": "No QGIS project is open",
+    "Нет доступа к карте QGIS": "No access to the QGIS map canvas",
+
     # Качество по НСИ
     "Качество по НСИ": "Reference data quality",
     "Соединение": "Connection",

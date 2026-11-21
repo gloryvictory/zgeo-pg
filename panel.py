@@ -314,12 +314,16 @@ class QualityTabPage(QWidget):
         self._boxes: Dict[str, QCheckBox] = {}
         self._columns: List[str] = []
         self._row_of: Dict[str, int] = {}
+        self._table_of: Dict[int, object] = {}
         self._problems = 0
         self._errors = 0
         self._state: Tuple[str, str] = ("idle", "")
         self._results: Dict[str, Dict[str, Tuple[object, str]]] = {}
         self._details: Dict[Tuple[str, str], List[tuple]] = {}
         self._help_key: Optional[str] = None
+        # Пространственная вкладка умеет загружать слой в проект QGIS,
+        # атрибутная — нет: у неё нет таблиц с геометрией.
+        self._spatial = any(getattr(check, "sql", None) for check in self._checks)
         self._build()
 
     # ------------------------------------------------------------------ UI
@@ -378,6 +382,14 @@ class QualityTabPage(QWidget):
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
         self.table.cellDoubleClicked.connect(self._on_cell_double_clicked)
+        if self._spatial:
+            # Меню по правой кнопке: загрузить таблицу строки в проект QGIS.
+            self.table.setContextMenuPolicy(
+                Qt.ContextMenuPolicy.CustomContextMenu
+            )
+            self.table.customContextMenuRequested.connect(
+                self._on_table_context_menu
+            )
         layout.addWidget(self.table, 1)
 
         self.summary_label = QLabel()
@@ -553,10 +565,12 @@ class QualityTabPage(QWidget):
         self.table.setHorizontalHeaderLabels(headers)
         self.table.setRowCount(len(self._host._tables))
         self._row_of = {}
+        self._table_of = {}
         for row, table in enumerate(self._host._tables):
             # Ключ включает столбец геометрии: у таблицы их может быть
             # несколько, и тогда схема с именем совпадают.
             self._row_of[row_key(table)] = row
+            self._table_of[row] = table
             self.table.setItem(row, 0, QTableWidgetItem(table.schema))
             self.table.setItem(row, 1, QTableWidgetItem(table.name))
         self.table.horizontalHeader().setSectionResizeMode(
@@ -597,6 +611,54 @@ class QualityTabPage(QWidget):
         """Запомнить подробный список дублей для ячейки."""
 
         self._details[(key, table_name)] = list(details)
+
+    def _table_for_row(self, row: int):
+        """Найти таблицу каталога по номеру строки результатов."""
+
+        return self._table_of.get(row)
+
+    def _on_table_context_menu(self, position) -> None:
+        """Меню по правой кнопке: загрузить таблицу строки в проект QGIS."""
+
+        item = self.table.itemAt(position)
+        if item is None:
+            return
+        row = item.row()
+        table = self._table_for_row(row)
+        if table is None:
+            return
+        menu = QMenu(self)
+        action = menu.addAction(
+            tr("Загрузить в текущий проект и показать на карте")
+        )
+        action.setToolTip(table.full_name)
+        chosen = menu.exec(self.table.viewport().mapToGlobal(position))
+        if chosen is action:
+            self._load_layer(table)
+
+    def _load_layer(self, table) -> None:
+        """Добавить слой таблицы в проект QGIS и показать его на карте."""
+
+        host = self._host
+        if host._conn is None:
+            QMessageBox.information(
+                self, "ZGeo-PG", tr("Сначала подключитесь к базе данных")
+            )
+            return
+        try:
+            from .layer_loader import load_table_layer
+
+            message = load_table_layer(None, host._conn, table)
+        except Exception as error:  # noqa: BLE001
+            QMessageBox.critical(
+                self,
+                "ZGeo-PG",
+                tr("Не удалось загрузить слой") + ":\n" + str(error),
+            )
+            host._set_status(tr("Ошибка") + ": " + str(error))
+            return
+        host._set_status(message)
+
 
     def _on_cell_double_clicked(self, row: int, column: int) -> None:
         """Показать подробный список дублей по двойному щелчку."""
