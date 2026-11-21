@@ -42,6 +42,12 @@ THRESHOLD_DEFAULTS = {
     "max_parts": 1000,
     "max_bytes": 1000000,
     "stale_days": 30,
+    # Допуск для «почти дублей»: расстояние между объектами.
+    "overlap_tolerance": 1.0,
+    "overlap_tolerance_geographic": 1.0,
+    # Площадь наложения, ниже которой пересечение считается сливером.
+    "sliver_area": 1.0,
+    "sliver_area_geographic": 100.0,
 }
 
 THRESHOLD_KEY = "zgeopg/quality"
@@ -88,6 +94,8 @@ class QualityCheck:
     catalog_sql: Optional[str] = None
     # Проверка имеет смысл только для географических данных (SRID 4326).
     only_geographic: bool = False
+    # Тяжёлые проверки (self-join по таблице) по умолчанию выключены.
+    enabled_by_default: bool = True
 
 
 QUALITY_CHECKS: List[QualityCheck] = [
@@ -767,6 +775,110 @@ QUALITY_CHECKS: List[QualityCheck] = [
             "  AND ST_IsValidReason({geom}) LIKE 'Hole lies outside shell%'"
         ),
     ),
+    QualityCheck(
+        key="polygon_overlaps",
+        title="Пересечения полигонов внутри слоя",
+        summary="Полигоны одного слоя накладываются друг на друга.",
+        description=(
+            "Проверка ищет пары объектов одного слоя, которые пересекаются с "
+            "ненулевой площадью (ST_Overlaps). В корректном полигональном слое "
+            "объекты могут касаться границами, но не накладываться: наложения "
+            "дают двойной учёт площади, ломают пространственные соединения и "
+            "приводят к тому, что один и тот же участок попадает в два района. "
+            "Проверка тяжёлая: это соединение таблицы с самой собой по рамке "
+            "(&&), поэтому по умолчанию выключена и включается вручную."
+        ),
+        fix=(
+            "Найти пары запросом SELECT a.id, b.id FROM ... a JOIN ... b ON "
+            "a.geom && b.geom AND ST_Overlaps(a.geom, b.geom) и устранить "
+            "наложение: разрезать объекты (ST_Difference) или объединить их "
+            "(ST_Union)."
+        ),
+        sql=(
+            "SELECT count(*) FROM {table} a JOIN {table} b\n"
+            "  ON a.ctid < b.ctid AND a.{geom_col} && b.{geom_col}\n"
+            "WHERE a.{geom_col} IS NOT NULL AND b.{geom_col} IS NOT NULL\n"
+            "  AND NOT ST_IsEmpty(a.{geom_col}) AND NOT ST_IsEmpty(b.{geom_col})\n"
+            "  AND ST_Overlaps(a.{geom_col}, b.{geom_col})"
+        ),
+        enabled_by_default=False,
+    ),
+    QualityCheck(
+        key="near_duplicate_geometry",
+        title="Почти дубли геометрий",
+        summary="Объекты совпадают со сдвигом в пределах допуска.",
+        description=(
+            "Проверка ищет пары объектов одного слоя, расстояние между которыми "
+            "меньше допуска из настроек — по умолчанию 1 единица, для "
+            "географических данных 1 метр. Так выглядят объекты, загруженные "
+            "дважды с небольшим сдвигом или оцифрованные повторно: они выдают "
+            "себя за разные записи, но описывают одно и то же место. Точное "
+            "сравнение геометрий такие пары не находит. Проверка тяжёлая "
+            "(соединение таблицы с самой собой), по умолчанию выключена."
+        ),
+        fix=(
+            "Сравнить пары запросом SELECT a.id, b.id, ST_Distance(a.geom, "
+            "b.geom) ... WHERE ST_DWithin(a.geom, b.geom, <допуск>) и удалить "
+            "лишнюю запись."
+        ),
+        sql=(
+            "SELECT count(*) FROM {table} a JOIN {table} b\n"
+            "  ON a.ctid < b.ctid AND a.{geom_col} && b.{geom_col}\n"
+            "WHERE a.{geom_col} IS NOT NULL AND b.{geom_col} IS NOT NULL\n"
+            "  AND NOT ST_Equals(a.{geom_col}, b.{geom_col})\n"
+            "  AND ST_DWithin(a.{geom_col}, b.{geom_col}, {overlap_tolerance})"
+        ),
+        sql_geographic=(
+            "SELECT count(*) FROM {table} a JOIN {table} b\n"
+            "  ON a.ctid < b.ctid AND a.{geom_col} && b.{geom_col}\n"
+            "WHERE a.{geom_col} IS NOT NULL AND b.{geom_col} IS NOT NULL\n"
+            "  AND NOT ST_Equals(a.{geom_col}, b.{geom_col})\n"
+            "  AND ST_DWithin(a.{geom_col}::geography, b.{geom_col}::geography, "
+            "{overlap_tolerance_geographic})"
+        ),
+        enabled_by_default=False,
+    ),
+    QualityCheck(
+        key="polygon_slivers",
+        title="Сливеры (узкие щели)",
+        summary="Полигоны касаются друг друга с почти нулевой площадью наложения.",
+        description=(
+            "Проверка ищет пары полигонов одного слоя, которые касаются "
+            "границами, но наложение у них меньше порога из настроек — по "
+            "умолчанию 1 квадратная единица, для географических данных 1 м². "
+            "Такие «сливеры» остаются после неточной оцифровки смежных границ "
+            "и после оверлеев: вместо общей границы между объектами появляется "
+            "тонкая щель или нахлёст. Проверка тяжёлая (соединение таблицы с "
+            "самой собой), по умолчанию выключена."
+        ),
+        fix=(
+            "Сшить границы соседних объектов: ST_Snap(a.geom, b.geom, <допуск>) "
+            "для каждой пары или пересобрать слой топологически."
+        ),
+        sql=(
+            "SELECT count(*) FROM {table} a JOIN {table} b\n"
+            "  ON a.ctid < b.ctid AND a.{geom_col} && b.{geom_col}\n"
+            "WHERE a.{geom_col} IS NOT NULL AND b.{geom_col} IS NOT NULL\n"
+            "  AND GeometryType(a.{geom_col}) IN ('POLYGON', 'MULTIPOLYGON')\n"
+            "  AND GeometryType(b.{geom_col}) IN ('POLYGON', 'MULTIPOLYGON')\n"
+            "  AND ST_Intersects(a.{geom_col}, b.{geom_col})\n"
+            "  AND ST_Area(ST_Intersection(a.{geom_col}, b.{geom_col})) "
+            "> 0 AND ST_Area(ST_Intersection(a.{geom_col}, b.{geom_col})) "
+            "< {sliver_area}"
+        ),
+        sql_geographic=(
+            "SELECT count(*) FROM {table} a JOIN {table} b\n"
+            "  ON a.ctid < b.ctid AND a.{geom_col} && b.{geom_col}\n"
+            "WHERE a.{geom_col} IS NOT NULL AND b.{geom_col} IS NOT NULL\n"
+            "  AND GeometryType(a.{geom_col}) IN ('POLYGON', 'MULTIPOLYGON')\n"
+            "  AND GeometryType(b.{geom_col}) IN ('POLYGON', 'MULTIPOLYGON')\n"
+            "  AND ST_Intersects(a.{geom_col}, b.{geom_col})\n"
+            "  AND ST_Area(ST_Intersection(a.{geom_col}, b.{geom_col})::geography) "
+            "> 0 AND ST_Area(ST_Intersection(a.{geom_col}, b.{geom_col})::geography) "
+            "< {sliver_area_geographic}"
+        ),
+        enabled_by_default=False,
+    ),
 ]
 
 
@@ -1089,6 +1201,7 @@ def build_sql(
     return template.format(
         table=table.qualified,
         geom=geom,
+        geom_col=quote_ident(table.geom_column or "geom"),
         type=geometry_type,
         srid=int(table.srid or 0),
         max_points=int(thresholds.get("max_points", 10000)),
@@ -1098,6 +1211,14 @@ def build_sql(
         min_length_geographic=float(thresholds.get("min_length_geographic", 1.0)),
         max_parts=int(thresholds.get("max_parts", 1000)),
         max_bytes=int(thresholds.get("max_bytes", 1000000)),
+        overlap_tolerance=float(thresholds.get("overlap_tolerance", 1.0)),
+        overlap_tolerance_geographic=float(
+            thresholds.get("overlap_tolerance_geographic", 1.0)
+        ),
+        sliver_area=float(thresholds.get("sliver_area", 1.0)),
+        sliver_area_geographic=float(
+            thresholds.get("sliver_area_geographic", 100.0)
+        ),
     )
 
 

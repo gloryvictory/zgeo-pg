@@ -3,6 +3,33 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.34.0] - 2026-11-18
+
+### Added
+
+- Three checks that join a layer with itself: "Пересечения полигонов внутри
+  слоя" (ST_Overlaps with a non-zero area), "Почти дубли геометрий"
+  (ST_DWithin within a tolerance) and "Сливеры (узкие щели)" (an intersection
+  area above zero but below the threshold). All three are switched off by
+  default because the self-join is expensive.
+- Four new thresholds: tolerance for near duplicates and maximum sliver area,
+  each in planar units and in metres/square metres for geographic data.
+
+### Changed
+
+- `QualityCheck` gained `enabled_by_default`, so heavy checks start unchecked
+  on the spatial tab as well.
+- `build_sql()` exposes the geometry column name and the new threshold
+  placeholders to the templates.
+
+### Notes
+
+- The sliver threshold defaults to 100 m² for geographic data: measured in
+  degrees a thin gap easily reaches thousands of square metres, so the planar
+  default of 1 unit would never trigger.
+- The existing "Дыры в полигонах" check already covers ST_NumInteriorRings
+  from the same request.
+
 ## [0.33.0] - 2026-11-18
 
 ### Added

@@ -4,7 +4,7 @@
 
 QGIS plugin for viewing spatial data stored in a PostgreSQL / PostGIS database.
 
-Plugin version: **0.33.0**  
+Plugin version: **0.34.0**  
 Release history: [change.log](change.log)
 
 The plugin adds a **"ZGeo-PG"** toolbar panel in QGIS with a **"ZGeo-PG Catalog"** button that opens a floating panel. In the panel:
@@ -27,7 +27,7 @@ The plugin adds a **"ZGeo-PG"** toolbar panel in QGIS with a **"ZGeo-PG Catalog"
 - the schema table on the "Statistics" tab has a "Spatial index" column (Yes/No); the right-click menu of a schema row showing "No" creates indexes for all of its tables;
 - the right-click menu of a table row offers "Create spatial index" for "No" and "Refresh spatial index" plus "Drop spatial index" (with confirmation) for "Yes".
 
-- the **"Geospatial data quality"** tab runs 28 checks: six instant catalog checks first (geometry type not specified, SRID missing from spatial_ref_sys, geometry allows NULL, the index is not GiST, redundant spatial indexes, stale statistics), then nine checks that scan the table once (self-intersecting lines, swapped latitude and longitude, too many vertices, tiny polygons, extra Z or M, geometry collections, too many parts, very large geometry, holes in polygons, clockwise ring orientation, tiny lines and holes outside the polygon) and the previous ones: invalid geometry, empty geometry, duplicate geometries, self-intersections, mixed geometry types, wrong SRID, coordinates out of range, degenerate features, unclosed rings and a missing spatial index; every check is switched on with its checkbox and the "i" button opens the check description and the way to fix it on the right;
+- the **"Geospatial data quality"** tab runs 31 checks: six instant catalog checks first (geometry type not specified, SRID missing from spatial_ref_sys, geometry allows NULL, the index is not GiST, redundant spatial indexes, stale statistics), then nine checks that scan the table once (self-intersecting lines, swapped latitude and longitude, too many vertices, tiny polygons, extra Z or M, geometry collections, too many parts, very large geometry, holes in polygons, clockwise ring orientation, tiny lines and holes outside the polygon), three heavy checks that join the layer with itself — polygon overlaps inside a layer, near-duplicate geometries within a tolerance and slivers (narrow gaps), all switched off by default — and the previous ones: invalid geometry, empty geometry, duplicate geometries, self-intersections, mixed geometry types, wrong SRID, coordinates out of range, degenerate features, unclosed rings and a missing spatial index; every check is switched on with its checkbox and the "i" button opens the check description and the way to fix it on the right;
 - the checks run in a background thread over every loaded table; the "Run checks", "Abort" and "Export" (Excel or HTML) buttons sit at the bottom of the tab, the name of the current check is shown above the status bar and its progress in the status bar, and the results fill a table × check grid with the problem cells highlighted;
 - the **"Attribute data quality"** tab offers the same set of tools for 11 attribute checks: NULL values, empty strings, leading and trailing spaces, double spaces, duplicate records, numbers stored as text, control characters, abnormal text length, outliers in numeric columns dates out of the reasonable range and "Attribute duplicates (very slow!)", the latter switched off by default; the last check unites exact duplicate rows, composite key duplicates, matches ignoring case and extra spaces, and partial matches with the match percentage (for example "ЯмалоНенецкий автономный окру" inside "ЯмалоНенецкий автономный округ" is 96.7 %), and a double click on the cell opens the detailed list with export; a check runs only on columns of a matching type and shows "Not applicable" when there are none;
 - the **"Reference data quality"** tab splits the panel in two: on the left and on the right you pick a connection, a table and a text field, and the sorted lists of unique values are shown below; the "Compare" button sits between the panels with the statistics "Matched", "Present in the left panel but not in the right", "Present in the right panel but not in the left" underneath;
@@ -35,7 +35,7 @@ The plugin adds a **"ZGeo-PG"** toolbar panel in QGIS with a **"ZGeo-PG Catalog"
 - picking an entry in the "Connection" list connects to it at once, and a green or red dot left of the list shows whether it worked (the error text is in the tooltip);
 - when the table list is empty the tab explains why: "Connected, but the database has no tables" or "Connected, but no privilege to read tables: <name> (tables in the database: N)";
 - both sides of the reference data tab see the connection the panel is using even when it was never saved, and refresh the list on connect, save and delete; an unreachable database reports an error and the tab keeps working;
-- a "Thresholds" button on the spatial checks tab sets the maximum vertices, the minimum polygon area (planar and in m²), the minimum line length (planar and in metres), the maximum parts, the maximum geometry size and the statistics staleness; the values are stored in the QGIS settings;
+- a "Thresholds" button on the spatial checks tab sets the maximum vertices, the minimum polygon area (planar and in m²), the minimum line length (planar and in metres), the tolerance for near duplicates and the maximum sliver area (planar and in metres/m²), the maximum parts, the maximum geometry size and the statistics staleness; the values are stored in the QGIS settings;
 - check titles, summaries, full descriptions and fix hints are translated into English and follow the interface language, including already rendered results and an open description.
 
 The plugin supports QGIS 3.16 and newer, including QGIS 4 / Qt 6.
@@ -92,7 +92,7 @@ Build the archive:
 powershell -ExecutionPolicy Bypass -File .\scripts\build_zip.ps1
 ```
 
-The ready file will appear in `dist\zgeo-pg-0.33.0.zip`. Only the latest build is kept in `dist`. The script first closes a running QGIS Desktop (it keeps the plugin files locked, so the copy fails otherwise), installs the build into the QGIS Desktop 4.x profile (`%APPDATA%\QGIS\QGIS4\profiles\<profile>\python\plugins\zgeo-pg`) and starts QGIS again. Pass `-SkipQGISInstall` to only build the archive, and `-NoRestart` to leave QGIS closed.
+The ready file will appear in `dist\zgeo-pg-0.34.0.zip`. Only the latest build is kept in `dist`. The script first closes a running QGIS Desktop (it keeps the plugin files locked, so the copy fails otherwise), installs the build into the QGIS Desktop 4.x profile (`%APPDATA%\QGIS\QGIS4\profiles\<profile>\python\plugins\zgeo-pg`) and starts QGIS again. Pass `-SkipQGISInstall` to only build the archive, and `-NoRestart` to leave QGIS closed.
 
 Or install it manually. In QGIS open:
 

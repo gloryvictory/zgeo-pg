@@ -799,8 +799,37 @@ EN_TRANSLATIONS = {
         "By the OGC specification the outer ring of a polygon is walked counter-clockwise and the inner rings clockwise. The check compares the geometry with ST_ForcePolygonCCW: if the vertex order differs, the orientation is reversed. Part of the GIS and formats (Shapefile, some web services) expect exactly this orientation, otherwise the polygon is drawn inverted or is treated as the outer area."
     ),
 
-    "Пороги применяются к проверкам «Слишком много вершин», «Микрообъекты», «Микролинии», «Слишком много частей», «Очень крупная геометрия» и «Устаревшая статистика таблицы».": (
-        "The thresholds apply to the checks \"Too many vertices\", \"Tiny polygons\", \"Tiny lines\", \"Too many parts\", \"Very large geometry\" and \"Stale table statistics\"."
+
+    "Пересечения полигонов внутри слоя": "Overlaps between polygons of the same layer",
+    "Полигоны одного слоя накладываются друг на друга.": "Polygons of one layer overlap each other.",
+    "Проверка ищет пары объектов одного слоя, которые пересекаются с ненулевой площадью (ST_Overlaps). В корректном полигональном слое объекты могут касаться границами, но не накладываться: наложения дают двойной учёт площади, ломают пространственные соединения и приводят к тому, что один и тот же участок попадает в два района. Проверка тяжёлая: это соединение таблицы с самой собой по рамке (&&), поэтому по умолчанию выключена и включается вручную.": (
+        "The check looks for pairs of features in the same layer that intersect with a non-zero area (ST_Overlaps). A valid polygon layer may touch along boundaries but must not overlap: overlaps double-count the area, break spatial joins and put the same patch of land into two districts. The check is heavy: it joins the table with itself on the bounding box (&&), so it is switched off by default and enabled manually."
+    ),
+    "Найти пары запросом SELECT a.id, b.id FROM ... a JOIN ... b ON a.geom && b.geom AND ST_Overlaps(a.geom, b.geom) и устранить наложение: разрезать объекты (ST_Difference) или объединить их (ST_Union).": (
+        "Find the pairs with SELECT a.id, b.id FROM ... a JOIN ... b ON a.geom && b.geom AND ST_Overlaps(a.geom, b.geom) and remove the overlap: cut the features (ST_Difference) or merge them (ST_Union)."
+    ),
+    "Почти дубли геометрий": "Near-duplicate geometries",
+    "Объекты совпадают со сдвигом в пределах допуска.": "Features match within the tolerance distance.",
+    "Проверка ищет пары объектов одного слоя, расстояние между которыми меньше допуска из настроек — по умолчанию 1 единица, для географических данных 1 метр. Так выглядят объекты, загруженные дважды с небольшим сдвигом или оцифрованные повторно: они выдают себя за разные записи, но описывают одно и то же место. Точное сравнение геометрий такие пары не находит. Проверка тяжёлая (соединение таблицы с самой собой), по умолчанию выключена.": (
+        "The check looks for pairs of features in the same layer whose distance is below the threshold from the settings — 1 unit by default, 1 metre for geographic data. This is how features look when they were loaded twice with a small shift or digitised again: they pose as separate records but describe the same place. An exact geometry comparison does not find such pairs. The check is heavy (it joins the table with itself) and is switched off by default."
+    ),
+    "Сравнить пары запросом SELECT a.id, b.id, ST_Distance(a.geom, b.geom) ... WHERE ST_DWithin(a.geom, b.geom, <допуск>) и удалить лишнюю запись.": (
+        "Compare the pairs with SELECT a.id, b.id, ST_Distance(a.geom, b.geom) ... WHERE ST_DWithin(a.geom, b.geom, <tolerance>) and delete the extra record."
+    ),
+    "Сливеры (узкие щели)": "Slivers (narrow gaps)",
+    "Полигоны касаются друг друга с почти нулевой площадью наложения.": "Polygons touch with a nearly zero overlap area.",
+    "Проверка ищет пары полигонов одного слоя, которые касаются границами, но наложение у них меньше порога из настроек — по умолчанию 1 квадратная единица, для географических данных 1 м². Такие «сливеры» остаются после неточной оцифровки смежных границ и после оверлеев: вместо общей границы между объектами появляется тонкая щель или нахлёст. Проверка тяжёлая (соединение таблицы с самой собой), по умолчанию выключена.": (
+        "The check looks for pairs of polygons in the same layer that touch along boundaries with an overlap below the threshold from the settings — 1 square unit by default, 100 m² for geographic data. Such slivers stay behind after imprecise digitising of shared borders and after overlays: instead of a common border there is a thin gap or overlap. The check is heavy (it joins the table with itself) and is switched off by default."
+    ),
+    "Сшить границы соседних объектов: ST_Snap(a.geom, b.geom, <допуск>) для каждой пары или пересобрать слой топологически.": (
+        "Stitch the borders of neighbouring features: ST_Snap(a.geom, b.geom, <tolerance>) for each pair or rebuild the layer topologically."
+    ),
+    "Допуск для почти дублей": "Tolerance for near duplicates",
+    "Допуск для почти дублей, м": "Tolerance for near duplicates, m",
+    "Максимальная площадь сливера": "Maximum sliver area",
+    "Максимальная площадь сливера, м²": "Maximum sliver area, m²",
+    "Пороги применяются к проверкам «Слишком много вершин», «Микрообъекты», «Микролинии», «Слишком много частей», «Очень крупная геометрия», «Устаревшая статистика таблицы», «Почти дубли геометрий» и «Сливеры (узкие щели)».": (
+        "The thresholds apply to the checks \"Too many vertices\", \"Tiny polygons\", \"Tiny lines\", \"Too many parts\", \"Very large geometry\", \"Stale table statistics\", \"Near-duplicate geometries\" and \"Slivers (narrow gaps)\"."
     ),
 
     # Качество по НСИ
