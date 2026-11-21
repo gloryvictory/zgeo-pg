@@ -106,11 +106,13 @@ try {
     New-Item -ItemType Directory -Path $stagingPlugin -Force | Out-Null
     New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 
+    # img/ — скриншоты для README, в архиве плагина они не нужны.
     $excludedNames = @(
         "__pycache__",
         "dist",
         "scripts",
         "tests",
+        "img",
         ".git",
         ".gitignore",
         ".idea",

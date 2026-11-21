@@ -4,7 +4,7 @@
 
 QGIS plugin for viewing spatial data stored in a PostgreSQL / PostGIS database.
 
-Plugin version: **0.41.0**  
+Plugin version: **0.42.0**  
 Release history: [change.log](change.log)
 
 The plugin adds a **"ZGeo-PG"** toolbar panel in QGIS with a **"ZGeo-PG Catalog"** button that opens a floating panel. In the panel:
@@ -91,7 +91,7 @@ zgeo-pg/
 ├── table_export.py      # export tables with file selection
 ├── version.py           # plugin version from metadata.txt
 ├── icon.svg             # plugin icon
-├── img/                 # interface screenshots for the documentation
+├── img/                 # interface screenshots for the documentation (not packed)
 ├── LICENSE.md           # MIT license
 ├── scripts/             # build scripts
 └── .gitignore           # ignored files
@@ -117,7 +117,7 @@ Build the archive:
 powershell -ExecutionPolicy Bypass -File .\scripts\build_zip.ps1
 ```
 
-The ready file will appear in `dist\zgeo-pg-0.41.0.zip`. Only the latest build is kept in `dist`. The script first closes a running QGIS Desktop (it keeps the plugin files locked, so the copy fails otherwise), installs the build into the QGIS Desktop 4.x profile (`%APPDATA%\QGIS\QGIS4\profiles\<profile>\python\plugins\zgeo-pg`) and starts QGIS again. Pass `-SkipQGISInstall` to only build the archive, and `-NoRestart` to leave QGIS closed.
+The ready file will appear in `dist\zgeo-pg-0.42.0.zip`. Only the latest build is kept in `dist`. The script first closes a running QGIS Desktop (it keeps the plugin files locked, so the copy fails otherwise), installs the build into the QGIS Desktop 4.x profile (`%APPDATA%\QGIS\QGIS4\profiles\<profile>\python\plugins\zgeo-pg`) and starts QGIS again. Pass `-SkipQGISInstall` to only build the archive, and `-NoRestart` to leave QGIS closed.
 
 Or install it manually. In QGIS open:
 

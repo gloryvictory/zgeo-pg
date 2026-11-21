@@ -3,6 +3,13 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.42.0] - 2026-11-18
+
+### Changed
+
+- `scripts/build_zip.ps1` excludes the `img/` folder: the README screenshots
+  stay in the repository and no longer bloat the plugin archive.
+
 ## [0.41.0] - 2026-11-18
 
 ### Added
@@ -13,8 +20,7 @@ Entries are written in English, newest first, and match the version in `metadata
 
 ### Changed
 
-- The project structure section lists the `img/` folder, and the screenshots
-  ship inside the plugin archive.
+- The project structure section lists the `img/` folder.
 
 ## [0.40.0] - 2026-11-18
 
