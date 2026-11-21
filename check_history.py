@@ -194,22 +194,69 @@ def _records(sql: str, bindings: Sequence[object] = ()) -> List[CheckRecord]:
     return records
 
 
-def history(kind: str, check_key: str = "", limit: int = 300) -> List[CheckRecord]:
-    """Последние записи истории, при желании только по одной проверке."""
+def _filter(check_key: str = "", layer: str = "") -> Tuple[str, List[object]]:
+    """Собрать WHERE-условие по проверке и слою (схема.таблица)."""
+
+    clauses: List[str] = []
+    bindings: List[object] = []
+    if check_key:
+        clauses.append('"check_key" = ?')
+        bindings.append(check_key)
+    if layer:
+        schema, _, name = layer.partition(".")
+        if schema and name:
+            clauses.append('"schema" = ? AND "table_name" = ?')
+            bindings.extend([schema, name])
+        else:
+            clauses.append('"table_name" = ?')
+            bindings.append(layer)
+    if not clauses:
+        return "", []
+    return " WHERE " + " AND ".join(clauses), bindings
+
+
+def history(
+    kind: str,
+    check_key: str = "",
+    layer: str = "",
+    limit: int = 300,
+) -> List[CheckRecord]:
+    """Последние записи истории, при желании только по проверке и слою."""
 
     table = TABLE_OF.get(kind)
     if table is None:
         return []
-    if check_key:
-        sql = (
-            'SELECT {columns} FROM "{table}" WHERE "check_key" = ? '
-            'ORDER BY "id" DESC LIMIT ?'
-        ).format(columns=SELECT_COLUMNS, table=table)
-        return _records(sql, (check_key, int(limit)))
-    sql = 'SELECT {columns} FROM "{table}" ORDER BY "id" DESC LIMIT ?'.format(
-        columns=SELECT_COLUMNS, table=table
+    where, bindings = _filter(check_key, layer)
+    sql = 'SELECT {columns} FROM "{table}"{where} ORDER BY "id" DESC LIMIT ?'.format(
+        columns=SELECT_COLUMNS, table=table, where=where
     )
-    return _records(sql, (int(limit),))
+    return _records(sql, list(bindings) + [int(limit)])
+
+
+def layers(kind: str) -> List[str]:
+    """Слои (схема.таблица), встречавшиеся в истории проверок."""
+
+    table = TABLE_OF.get(kind)
+    if table is None:
+        return []
+    db = _open()
+    if db is None:
+        return []
+    query = QSqlQuery(db)
+    sql = (
+        'SELECT DISTINCT "schema", "table_name" FROM "{table}" '
+        'ORDER BY "schema", "table_name"'
+    ).format(table=table)
+    if not query.exec(sql):
+        return []
+    names: List[str] = []
+    while query.next():
+        schema = str(query.value(0) or "")
+        name = str(query.value(1) or "")
+        if not name:
+            continue
+        names.append(schema + "." + name if schema else name)
+    return names
 
 
 def check_keys(kind: str) -> List[Tuple[str, str]]:
@@ -236,7 +283,12 @@ def check_keys(kind: str) -> List[Tuple[str, str]]:
     return pairs
 
 
-def series(kind: str, check_key: str = "", limit: int = 30) -> List[Tuple[str, int]]:
+def series(
+    kind: str,
+    check_key: str = "",
+    layer: str = "",
+    limit: int = 30,
+) -> List[Tuple[str, int]]:
     """Динамика: сумма проблем по прогонам, от старых к новым."""
 
     table = TABLE_OF.get(kind)
@@ -245,19 +297,16 @@ def series(kind: str, check_key: str = "", limit: int = 30) -> List[Tuple[str, i
     db = _open()
     if db is None:
         return []
+    where, bindings = _filter(check_key, layer)
     query = QSqlQuery(db)
-    if check_key:
-        query.prepare(
-            'SELECT min("created"), sum("problems") FROM "{table}" '
-            'WHERE "check_key" = ? GROUP BY "run_id" '
-            'ORDER BY min("id") DESC LIMIT ?'.format(table=table)
+    query.prepare(
+        'SELECT min("created"), sum("problems") FROM "{table}"{where} '
+        'GROUP BY "run_id" ORDER BY min("id") DESC LIMIT ?'.format(
+            table=table, where=where
         )
-        query.addBindValue(check_key)
-    else:
-        query.prepare(
-            'SELECT min("created"), sum("problems") FROM "{table}" '
-            'GROUP BY "run_id" ORDER BY min("id") DESC LIMIT ?'.format(table=table)
-        )
+    )
+    for value in bindings:
+        query.addBindValue(value)
     query.addBindValue(int(limit))
     if not query.exec():
         return []
@@ -271,6 +320,110 @@ def series(kind: str, check_key: str = "", limit: int = 30) -> List[Tuple[str, i
         points.append((created, total))
     points.reverse()
     return points
+
+
+def _run_ids(kind: str, count: int, check_key: str = "", layer: str = "") -> List[str]:
+    """Метки последних прогонов, от нового к старому."""
+
+    table = TABLE_OF.get(kind)
+    if table is None:
+        return []
+    db = _open()
+    if db is None:
+        return []
+    where, bindings = _filter(check_key, layer)
+    query = QSqlQuery(db)
+    query.prepare(
+        'SELECT "run_id" FROM "{table}"{where} GROUP BY "run_id" '
+        'ORDER BY min("id") DESC LIMIT ?'.format(table=table, where=where)
+    )
+    for value in bindings:
+        query.addBindValue(value)
+    query.addBindValue(int(count))
+    if not query.exec():
+        return []
+    runs: List[str] = []
+    while query.next():
+        run_id = str(query.value(0) or "")
+        if run_id:
+            runs.append(run_id)
+    return runs
+
+
+def _run_totals(
+    kind: str,
+    run_id: str,
+    check_key: str = "",
+    layer: str = "",
+) -> List[Tuple[str, str, int]]:
+    """Суммы проблем по проверкам одного прогона: (ключ, название, сумма)."""
+
+    table = TABLE_OF.get(kind)
+    if table is None or not run_id:
+        return []
+    db = _open()
+    if db is None:
+        return []
+    where, bindings = _filter(check_key, layer)
+    separator = " AND " if where else " WHERE "
+    query = QSqlQuery(db)
+    query.prepare(
+        'SELECT "check_key", max("check_title"), sum("problems") FROM "{table}"'
+        '{where}{separator}"run_id" = ? GROUP BY "check_key"'.format(
+            table=table, where=where, separator=separator
+        )
+    )
+    for value in bindings:
+        query.addBindValue(value)
+    query.addBindValue(run_id)
+    if not query.exec():
+        return []
+    totals: List[Tuple[str, str, int]] = []
+    while query.next():
+        key = str(query.value(0) or "")
+        if not key:
+            continue
+        try:
+            total = int(query.value(2) or 0)
+        except (TypeError, ValueError):
+            total = 0
+        totals.append((key, str(query.value(1) or key), total))
+    return totals
+
+
+def compare_runs(
+    kind: str,
+    check_key: str = "",
+    layer: str = "",
+) -> List[Tuple[str, str, Optional[int], Optional[int]]]:
+    """Было/стало: суммы проблем последнего и предыдущего прогонов.
+
+    Returns:
+        Список (ключ, название, было, стало). ``None`` означает, что проверки
+        не было в соответствующем прогоне.
+    """
+
+    runs = _run_ids(kind, 2, check_key, layer)
+    if not runs:
+        return []
+    current = dict(
+        (key, (title, total))
+        for key, title, total in _run_totals(kind, runs[0], check_key, layer)
+    )
+    previous: dict = {}
+    if len(runs) > 1:
+        previous = dict(
+            (key, (title, total))
+            for key, title, total in _run_totals(kind, runs[1], check_key, layer)
+        )
+
+    rows: List[Tuple[str, str, Optional[int], Optional[int]]] = []
+    for key in sorted(set(current) | set(previous)):
+        title = (current.get(key) or previous.get(key))[0]
+        was = previous[key][1] if key in previous else None
+        now = current[key][1] if key in current else None
+        rows.append((key, title, was, now))
+    return rows
 
 
 def clear(kind: str) -> bool:

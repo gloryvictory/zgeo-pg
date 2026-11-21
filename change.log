@@ -3,6 +3,21 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.45.0] - 2026-11-18
+
+### Added
+
+- A "Слои" filter above the history table: "Все слои" plus every layer found in
+  the history, filtering both the table and the dynamics chart.
+- A "Было/стало" button to the right of it: the table switches to the latest run
+  against the previous one with the columns check, before, after and difference,
+  and the summary counts the improved and worsened checks.
+
+### Fixed
+
+- `_run_totals()` ignored the layer filter and produced broken SQL, so the
+  comparison returned nothing for a single layer.
+
 ## [0.44.0] - 2026-11-18
 
 ### Added

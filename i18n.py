@@ -906,6 +906,22 @@ EN_TRANSLATIONS = {
     # Статистика проверок
     "Общее": "General",
     "Все проверки": "All checks",
+    "Слои": "Layers",
+    "Все слои": "All layers",
+    "Было/стало": "Before/after",
+    "Показать текущую и предыдущую проверку": (
+        "Show the current and the previous run"
+    ),
+    "Было": "Before",
+    "Стало": "After",
+    "Разница": "Difference",
+    "Было / стало: проблемы по прогонам": "Before / after: problems per run",
+    "Проверок в сравнении: {}": "Checks compared: {}",
+    "улучшилось: {}": "improved: {}",
+    "ухудшилось: {}": "worsened: {}",
+    "Сравнивать нечего: нужен второй прогон": (
+        "Nothing to compare: a second run is needed"
+    ),
     "Проверка": "Check",
     "Дата": "Date",
     "Проблем": "Problems",

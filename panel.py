@@ -1894,6 +1894,19 @@ class ZGeoPgPanel(QDockWidget):
         controls.addWidget(self._stats_clear_button)
         layout.addLayout(controls)
 
+        # Фильтр по слою и переключатель «Было/стало» — отдельной строкой
+        # прямо над таблицей.
+        layer_row = QHBoxLayout()
+        self._stats_layer_label = QLabel()
+        layer_row.addWidget(self._stats_layer_label)
+        self._stats_layer_combo = QComboBox()
+        layer_row.addWidget(self._stats_layer_combo, 1)
+        self._stats_compare_button = QPushButton()
+        self._stats_compare_button.setCheckable(True)
+        self._stats_compare_button.toggled.connect(self._on_history_compare_toggled)
+        layer_row.addWidget(self._stats_compare_button)
+        layout.addLayout(layer_row)
+
         self._history_chart = LineChart()
         layout.addWidget(self._history_chart)
 
@@ -1913,6 +1926,9 @@ class ZGeoPgPanel(QDockWidget):
         )
         self._stats_check_combo.currentIndexChanged.connect(
             self._on_history_filter_changed
+        )
+        self._stats_layer_combo.currentIndexChanged.connect(
+            self._on_history_layer_changed
         )
         return page
 
@@ -2088,6 +2104,11 @@ class ZGeoPgPanel(QDockWidget):
             self._stats_tabs.setTabText(1, tr("Проверки"))
             self._stats_kind_label.setText(tr("Проверки"))
             self._stats_check_label.setText(tr("Проверка"))
+            self._stats_layer_label.setText(tr("Слои"))
+            self._stats_compare_button.setText(tr("Было/стало"))
+            self._stats_compare_button.setToolTip(
+                tr("Показать текущую и предыдущую проверку")
+            )
             self._stats_refresh_button.setText(tr("Обновить"))
             self._stats_clear_button.setText(tr("Очистить историю"))
             self._history_table.setHorizontalHeaderLabels(
@@ -2557,6 +2578,19 @@ class ZGeoPgPanel(QDockWidget):
     def _on_history_filter_changed(self, *_args) -> None:
         self._reload_history()
 
+    def _fill_history_layers(self) -> None:
+        """Заполнить список слоёв, встречавшихся в истории."""
+
+        current = self._stats_layer_combo.currentData()
+        self._stats_layer_combo.blockSignals(True)
+        self._stats_layer_combo.clear()
+        self._stats_layer_combo.addItem(tr("Все слои"), "")
+        for name in check_history.layers(self._history_kind):
+            self._stats_layer_combo.addItem(name, name)
+        index = self._stats_layer_combo.findData(current)
+        self._stats_layer_combo.setCurrentIndex(max(0, index))
+        self._stats_layer_combo.blockSignals(False)
+
     def _fill_history_checks(self) -> None:
         """Заполнить список проверок, встречавшихся в истории."""
 
@@ -2569,13 +2603,30 @@ class ZGeoPgPanel(QDockWidget):
         index = self._stats_check_combo.findData(current)
         self._stats_check_combo.setCurrentIndex(max(0, index))
         self._stats_check_combo.blockSignals(False)
+        self._fill_history_layers()
+
+    def _on_history_layer_changed(self, *_args) -> None:
+        self._reload_history()
+
+    def _on_history_compare_toggled(self, _checked: bool) -> None:
+        """Переключить режим «Было/стало»."""
+
+        self._reload_history()
 
     def _reload_history(self) -> None:
-        """Перечитать историю проверок и перерисовать график."""
+        """Перечитать историю проверок и перерисовать таблицу и график."""
 
         kind = self._history_kind
         key = self._stats_check_combo.currentData() or ""
-        records = check_history.history(kind, key, limit=300)
+        layer = self._stats_layer_combo.currentData() or ""
+        if self._stats_compare_button.isChecked():
+            self._show_compare(kind, key, layer)
+            return
+        self._history_table.setColumnCount(5)
+        self._history_table.setHorizontalHeaderLabels(
+            [tr("Дата"), tr("Соединение"), tr("Таблица"), tr("Проверка"), tr("Проблем")]
+        )
+        records = check_history.history(kind, key, layer, limit=300)
         self._history_table.setRowCount(len(records))
         for row, record in enumerate(records):
             values = (
@@ -2595,7 +2646,7 @@ class ZGeoPgPanel(QDockWidget):
         )
         self._history_table.horizontalHeader().setStretchLastSection(True)
 
-        points = check_history.series(kind, key, limit=30)
+        points = check_history.series(kind, key, layer, limit=30)
         labels = [created[5:16] for created, _value in points]
         values = [value for _created, value in points]
         self._history_chart.set_title(
@@ -2611,6 +2662,61 @@ class ZGeoPgPanel(QDockWidget):
             )
         else:
             self._history_summary.setText(tr("История проверок пуста"))
+
+    def _show_compare(self, kind: str, key: str, layer: str) -> None:
+        """Показать текущую (последнюю) и предыдущую проверку рядом."""
+
+        rows = check_history.compare_runs(kind, key, layer)
+        self._history_table.setColumnCount(4)
+        self._history_table.setHorizontalHeaderLabels(
+            [tr("Проверка"), tr("Было"), tr("Стало"), tr("Разница")]
+        )
+        self._history_table.setRowCount(len(rows))
+        improved = 0
+        worsened = 0
+        for row, (_check_key, title, was, now) in enumerate(rows):
+            if was is not None and now is not None:
+                delta = now - was
+                if delta < 0:
+                    improved += 1
+                elif delta > 0:
+                    worsened += 1
+                delta_text = "{:+d}".format(delta)
+            else:
+                delta_text = tr("—")
+            values = (
+                tr(title),
+                tr("—") if was is None else str(was),
+                tr("—") if now is None else str(now),
+                delta_text,
+            )
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(str(value))
+                if column in (1, 2):
+                    number = (was, now)[column - 1]
+                    if number is not None:
+                        item.setData(Qt.ItemDataRole.UserRole, int(number))
+                self._history_table.setItem(row, column, item)
+        self._history_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.ResizeToContents
+        )
+        self._history_table.horizontalHeader().setStretchLastSection(True)
+
+        runs = check_history.series(kind, key, layer, limit=2)
+        labels = [created[5:16] for created, _value in runs]
+        self._history_chart.set_title(tr("Было / стало: проблемы по прогонам"))
+        self._history_chart.set_points(labels, [value for _created, value in runs])
+
+        if rows:
+            self._history_summary.setText(
+                tr("Проверок в сравнении: {}").format(len(rows))
+                + " — "
+                + tr("улучшилось: {}").format(improved)
+                + ", "
+                + tr("ухудшилось: {}").format(worsened)
+            )
+        else:
+            self._history_summary.setText(tr("Сравнивать нечего: нужен второй прогон"))
 
     def _on_history_clear(self) -> None:
         """Удалить историю выбранного вида проверок."""
