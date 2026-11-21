@@ -602,13 +602,6 @@ EN_TRANSLATIONS = {
     "Максимум частей в объекте": "Maximum parts per feature",
     "Максимум размера геометрии, байт": "Maximum geometry size, bytes",
     "Устаревание статистики, дней": "Statistics staleness, days",
-    "Пороги применяются к проверкам «Слишком много вершин», "
-    "«Микрообъекты», «Слишком много частей», «Очень крупная "
-    "геометрия» и «Устаревшая статистика таблицы».": (
-        "The thresholds apply to the checks \"Too many vertices\", "
-        "\"Tiny polygons\", \"Too many parts\", \"Very large geometry\" "
-        "and \"Stale table statistics\"."
-    ),
     "Тип геометрии не задан": "Geometry type is not specified",
     "Столбец объявлен как geometry без типа и SRID.": (
         "The column is declared as geometry without type and SRID."
@@ -773,6 +766,41 @@ EN_TRANSLATIONS = {
     ),
     "Просмотреть подробный список двойным щелчком по ячейке и объединить или удалить лишние записи; для совпадений без учёта регистра привести значения к единому написанию, для частичных вхождений — заменить обрезанное значение полным.": (
         "Open the detailed list with a double click on the cell and merge or delete the extra records; for case-insensitive matches bring the values to one spelling, for partial matches replace the truncated value with the full one."
+    ),
+
+    "По спецификации OGC внешнее кольцо полигона обходится против часовой стрелки, внутренние — по часовой. Проверка сравнивает геометрию с ST_ForcePolygonCCW: если они различаются, ориентация обратная. Часть ГИС и форматов (Shapefile, некоторые веб-сервисы) ожидают именно такую ориентацию, иначе полигон рисуется «вывернутым» или считается внешней областью.": (
+        "By the OGC specification the outer ring of a polygon is walked counter-clockwise and the inner rings clockwise. The check compares the geometry with ST_ForcePolygonCCW: if they differ, the orientation is reversed. Part of the GIS and formats (Shapefile, some web services) expect exactly this orientation, otherwise the polygon is drawn inverted or is treated as the outer area."
+    ),
+    "Привести ориентацию колец к спецификации: UPDATE ... SET geom = ST_ForcePolygonCCW(geom).": (
+        "Bring the ring orientation to the specification: UPDATE ... SET geom = ST_ForcePolygonCCW(geom)."
+    ),
+    "Проверка ищет линии с длиной меньше порога — по умолчанию 1 единица. Такие обрезки появляются после наложения и обрезки слоёв и выглядят на карте точками: они завышают количество объектов, мешают генерализации и попадают в отчёты как самостоятельные дороги или реки. Для географических данных длина считается в метрах.": (
+        "The check looks for lines shorter than the threshold — 1 unit by default. Such clippings stay behind after overlaying and clipping layers and look like points on the map: they inflate the feature count, get in the way of generalisation and end up in reports as separate roads or rivers. For geographic data the length is measured in metres."
+    ),
+    "Удалить обрезки или объединить их с соседними линиями: DELETE FROM ... WHERE ST_Length(geom) < <порог>.": (
+        "Delete the clippings or merge them with neighbouring lines: DELETE FROM ... WHERE ST_Length(geom) < <threshold>."
+    ),
+    "Проверка ищет полигоны, у которых внутреннее кольцо лежит вне внешней оболочки: PostGIS сообщает причину «Hole lies outside shell». Обычно это следствие ручной правки или неудачного объединения: дыра «висит» снаружи и вырезает чужие территории, из-за чего ломается расчёт площадей при наложении.": (
+        "The check looks for polygons whose inner ring lies outside the outer shell: PostGIS reports the reason Hole lies outside shell. Usually this comes from manual editing or a failed merge: the hole hangs outside and cuts out other territories, which breaks area calculations on overlay."
+    ),
+    "Удалить или залить внешние дыры: ST_MakePolygon(ST_ExteriorRing(geom)) либо исправить кольца вручную в редакторе QGIS.": (
+        "Delete or fill the outside holes: ST_MakePolygon(ST_ExteriorRing(geom)) or fix the rings manually in the QGIS editor."
+    ),
+    "Кольца против часовой стрелки": "Clockwise ring orientation",
+    "Ориентация внешнего кольца не по спецификации OGC.": "The outer ring orientation does not follow the OGC specification.",
+    "Микролинии": "Tiny lines",
+    "Длина линии меньше порога из настроек.": "The line length is below the configured threshold.",
+    "Дыры за пределами полигона": "Holes outside the polygon",
+    "Внутреннее кольцо выходит за внешнюю оболочку.": "The inner ring lies outside the outer shell.",
+    "Минимальная длина линии": "Minimum line length",
+    "Минимальная длина линии, м": "Minimum line length, m",
+
+    "По спецификации OGC внешнее кольцо полигона обходится против часовой стрелки, внутренние — по часовой. Проверка сравнивает геометрию с ST_ForcePolygonCCW: если порядок вершин отличается, ориентация обратная. Часть ГИС и форматов (Shapefile, некоторые веб-сервисы) ожидают именно такую ориентацию, иначе полигон рисуется «вывернутым» или считается внешней областью.": (
+        "By the OGC specification the outer ring of a polygon is walked counter-clockwise and the inner rings clockwise. The check compares the geometry with ST_ForcePolygonCCW: if the vertex order differs, the orientation is reversed. Part of the GIS and formats (Shapefile, some web services) expect exactly this orientation, otherwise the polygon is drawn inverted or is treated as the outer area."
+    ),
+
+    "Пороги применяются к проверкам «Слишком много вершин», «Микрообъекты», «Микролинии», «Слишком много частей», «Очень крупная геометрия» и «Устаревшая статистика таблицы».": (
+        "The thresholds apply to the checks \"Too many vertices\", \"Tiny polygons\", \"Tiny lines\", \"Too many parts\", \"Very large geometry\" and \"Stale table statistics\"."
     ),
 
     # Качество по НСИ

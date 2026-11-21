@@ -37,6 +37,8 @@ THRESHOLD_DEFAULTS = {
     "max_points": 10000,
     "min_area": 1.0,
     "min_area_geographic": 1.0,
+    "min_length": 1.0,
+    "min_length_geographic": 1.0,
     "max_parts": 1000,
     "max_bytes": 1000000,
     "stale_days": 30,
@@ -689,6 +691,82 @@ QUALITY_CHECKS: List[QualityCheck] = [
             "  AND ST_NumInteriorRings(ST_GeometryN({geom}, 1)) > 0"
         ),
     ),
+    QualityCheck(
+        key="ring_orientation",
+        title="Кольца против часовой стрелки",
+        summary="Ориентация внешнего кольца не по спецификации OGC.",
+        description=(
+            "По спецификации OGC внешнее кольцо полигона обходится против "
+            "часовой стрелки, внутренние — по часовой. Проверка сравнивает "
+            "геометрию с ST_ForcePolygonCCW: если порядок вершин отличается, "
+            "ориентация обратная. Часть ГИС и форматов (Shapefile, некоторые "
+            "веб-сервисы) ожидают именно такую ориентацию, иначе полигон "
+            "рисуется «вывернутым» или считается внешней областью."
+        ),
+        fix=(
+            "Привести ориентацию колец к спецификации: UPDATE ... SET geom = "
+            "ST_ForcePolygonCCW(geom)."
+        ),
+        sql=(
+            "SELECT count(*) FROM {table}\n"
+            "WHERE {geom} IS NOT NULL AND NOT ST_IsEmpty({geom})\n"
+            "  AND GeometryType({geom}) IN ('POLYGON', 'MULTIPOLYGON')\n"
+            "  AND NOT ST_OrderingEquals(ST_ForcePolygonCCW({geom}), {geom})"
+        ),
+    ),
+    QualityCheck(
+        key="tiny_lines",
+        title="Микролинии",
+        summary="Длина линии меньше порога из настроек.",
+        description=(
+            "Проверка ищет линии с длиной меньше порога — по умолчанию "
+            "1 единица. Такие обрезки появляются после наложения и обрезки "
+            "слоёв и выглядят на карте точками: они завышают количество "
+            "объектов, мешают генерализации и попадают в отчёты как "
+            "самостоятельные дороги или реки. Для географических данных длина "
+            "считается в метрах."
+        ),
+        fix=(
+            "Удалить обрезки или объединить их с соседними линиями: DELETE FROM "
+            "... WHERE ST_Length(geom) < <порог>."
+        ),
+        sql=(
+            "SELECT count(*) FROM {table}\n"
+            "WHERE {geom} IS NOT NULL AND NOT ST_IsEmpty({geom})\n"
+            "  AND GeometryType({geom}) IN ('LINESTRING', 'MULTILINESTRING')\n"
+            "  AND ST_Length({geom}) < {min_length}"
+        ),
+        sql_geographic=(
+            "SELECT count(*) FROM {table}\n"
+            "WHERE {geom} IS NOT NULL AND NOT ST_IsEmpty({geom})\n"
+            "  AND GeometryType({geom}) IN ('LINESTRING', 'MULTILINESTRING')\n"
+            "  AND ST_Length({geom}::geography) < {min_length_geographic}"
+        ),
+    ),
+    QualityCheck(
+        key="nested_holes",
+        title="Дыры за пределами полигона",
+        summary="Внутреннее кольцо выходит за внешнюю оболочку.",
+        description=(
+            "Проверка ищет полигоны, у которых внутреннее кольцо лежит вне "
+            "внешней оболочки: PostGIS сообщает причину «Hole lies outside "
+            "shell». Обычно это следствие ручной правки или неудачного "
+            "объединения: дыра «висит» снаружи и вырезает чужие территории, "
+            "из-за чего ломается расчёт площадей при наложении."
+        ),
+        fix=(
+            "Удалить или залить внешние дыры: ST_MakePolygon("
+            "ST_ExteriorRing(geom)) либо исправить кольца вручную в редакторе "
+            "QGIS."
+        ),
+        sql=(
+            "SELECT count(*) FROM {table}\n"
+            "WHERE {geom} IS NOT NULL AND NOT ST_IsEmpty({geom})\n"
+            "  AND GeometryType({geom}) IN ('POLYGON', 'MULTIPOLYGON')\n"
+            "  AND NOT ST_IsValid({geom})\n"
+            "  AND ST_IsValidReason({geom}) LIKE 'Hole lies outside shell%'"
+        ),
+    ),
 ]
 
 
@@ -941,6 +1019,7 @@ ATTRIBUTE_CHECKS: List[AttributeCheck] = [
 ]
 
 
+
 # Сначала мгновенные проверки по каталогу, затем проход по данным таблицы:
 # так пользователь получает быстрые ответы, не дожидаясь тяжёлых запросов.
 QUALITY_CHECKS.sort(key=lambda check: 0 if check.from_catalog else 1)
@@ -1015,6 +1094,8 @@ def build_sql(
         max_points=int(thresholds.get("max_points", 10000)),
         min_area=float(thresholds.get("min_area", 1.0)),
         min_area_geographic=float(thresholds.get("min_area_geographic", 1.0)),
+        min_length=float(thresholds.get("min_length", 1.0)),
+        min_length_geographic=float(thresholds.get("min_length_geographic", 1.0)),
         max_parts=int(thresholds.get("max_parts", 1000)),
         max_bytes=int(thresholds.get("max_bytes", 1000000)),
     )

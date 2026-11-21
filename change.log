@@ -3,6 +3,26 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.33.0] - 2026-11-18
+
+### Added
+
+- Three more spatial checks: "Кольца против часовой стрелки" (ring orientation
+  compared with ST_ForcePolygonCCW), "Микролинии" (line length below the
+  threshold) and "Дыры за пределами полигона" (the PostGIS reason
+  "Hole lies outside shell").
+- Two thresholds for the line check: minimum line length in planar units and
+  in metres for geographic data.
+
+### Fixed
+
+- The ring orientation check used ST_Equals, which compares topologically and
+  therefore never noticed a reversed ring; it now uses ST_OrderingEquals.
+- The holes-outside check first walked ST_DumpRings and failed with "Shell is
+  not a line" on multirings; it now relies on ST_IsValidReason.
+- A candidate "острые выступы контура" check was dropped: ST_Simplify does not
+  reveal spikes reliably, so it would have reported every complex polygon.
+
 ## [0.32.0] - 2026-11-18
 
 ### Added
