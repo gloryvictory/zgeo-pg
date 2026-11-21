@@ -903,6 +903,21 @@ EN_TRANSLATIONS = {
     "Не открыт проект QGIS": "No QGIS project is open",
     "Нет доступа к карте QGIS": "No access to the QGIS map canvas",
 
+    # Статистика проверок
+    "Общее": "General",
+    "Все проверки": "All checks",
+    "Проверка": "Check",
+    "Дата": "Date",
+    "Проблем": "Problems",
+    "Пространственные данные": "Spatial data",
+    "Атрибутивные данные": "Attribute data",
+    "Очистить историю": "Clear history",
+    "Динамика проблем": "Problems over time",
+    "Динамика по всем проверкам": "Problems over time, all checks",
+    "Записей в истории: {}": "Records in history: {}",
+    "прогонов на графике: {}": "runs on the chart: {}",
+    "История проверок пуста": "The check history is empty",
+
     "Выбрать все": "Select all",
     "Сбросить все": "Clear all",
     "По умолчанию": "Defaults",

@@ -4,7 +4,7 @@
 
 QGIS plugin for viewing spatial data stored in a PostgreSQL / PostGIS database.
 
-Plugin version: **0.43.0**  
+Plugin version: **0.44.0**  
 Release history: [change.log](change.log)
 
 The plugin adds a **"ZGeo-PG"** toolbar panel in QGIS with a **"ZGeo-PG Catalog"** button that opens a floating panel. In the panel:
@@ -21,7 +21,8 @@ The plugin adds a **"ZGeo-PG"** toolbar panel in QGIS with a **"ZGeo-PG Catalog"
 - the "Information" button on the "Tables" tab opens a dialog with full details of the selected table, including its comment and spatial index;
 - save your QGIS project before running the build: the script closes the editor and, if it has not exited within 10 seconds, terminates the process;
 - the "Export" button offers "Export to Excel" or "Export to HTML"; both formats include a totals row that sums every numeric column (estimated rows, exact feature count, data size, indexes size, spatial index size, full size), and every size is written in human-readable form — KB, MB, GB, TB;
-- on the **"Statistics"** tab, charts are displayed by table size and geometry type, as well as a statistics table by schema;
+- the **"Statistics"** tab is split into two sub-tabs: **"General"** with the charts by table size and geometry type plus the schema table, and **"Checks"** with the history of quality runs;
+- the "Checks" sub-tab selects the kind of checks (spatial or attribute) and a single check, and shows a table of the last records (date, connection, table, check, problem count) and a chart of the problem count per run; the history is kept in the local QGIS SQLite profile in the separate `spatial_checks` and `attribute_checks` tables, is updated after every check result and can be wiped with the "Clear history" button;
 - statistics can also be exported to Excel or HTML, also with a totals row;
 - the "Create all spatial indexes" button in the "Tables" toolbar (right after "Export") builds GiST indexes for all tables that have none, and "Refresh all spatial indexes" to its right rebuilds every existing one;
 - the schema table on the "Statistics" tab has a "Spatial index" column (Yes/No); the right-click menu of a schema row showing "No" creates indexes for all of its tables;
@@ -79,6 +80,7 @@ zgeo-pg/
 ├── connection.py        # PostgreSQL connections and the local SQLite parameter store
 ├── catalog.py           # read list of spatial tables from PostGIS
 ├── stats.py             # aggregate tables for statistics
+├── check_history.py     # quality check history in the local SQLite
 ├── charts.py            # bar charts without external dependencies
 ├── load_task.py         # background loading of table characteristics
 ├── quality.py           # spatial and attribute data quality checks
@@ -117,7 +119,7 @@ Build the archive:
 powershell -ExecutionPolicy Bypass -File .\scripts\build_zip.ps1
 ```
 
-The ready file will appear in `dist\zgeo-pg-0.43.0.zip`. Only the latest build is kept in `dist`. The script first closes a running QGIS Desktop (it keeps the plugin files locked, so the copy fails otherwise), installs the build into the QGIS Desktop 4.x profile (`%APPDATA%\QGIS\QGIS4\profiles\<profile>\python\plugins\zgeo-pg`) and starts QGIS again. Pass `-SkipQGISInstall` to only build the archive, and `-NoRestart` to leave QGIS closed.
+The ready file will appear in `dist\zgeo-pg-0.44.0.zip`. Only the latest build is kept in `dist`. The script first closes a running QGIS Desktop (it keeps the plugin files locked, so the copy fails otherwise), installs the build into the QGIS Desktop 4.x profile (`%APPDATA%\QGIS\QGIS4\profiles\<profile>\python\plugins\zgeo-pg`) and starts QGIS again. Pass `-SkipQGISInstall` to only build the archive, and `-NoRestart` to leave QGIS closed.
 
 Or install it manually. In QGIS open:
 

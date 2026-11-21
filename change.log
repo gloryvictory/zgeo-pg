@@ -3,6 +3,30 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.44.0] - 2026-11-18
+
+### Added
+
+- `check_history.py` keeps the results of every quality run in the local
+  SQLite file: spatial checks go to `spatial_checks`, attribute checks to
+  `attribute_checks`, so the two statistics never mix.
+- Every result is written as it arrives, with one `run_id` per run, so the
+  history fills up while the checks are still running.
+- The "Statistics" tab is split into two sub-tabs: "Общее" with the previous
+  charts and the schema table, and "Проверки" with the history of runs.
+- The "Проверки" sub-tab has a kind selector (spatial or attribute), a check
+  filter, a refresh button, a clear-history button, a table of the last 300
+  records and a line chart of the problem count per run.
+
+### Changed
+
+- `charts.py` gained `LineChart` for the dynamics: axis, points, values and
+  time labels without external dependencies.
+- History refreshes are throttled to twice a second while checks run and forced
+  at the end of a run.
+- Run ids use microseconds, so two runs started in the same second stay
+  separate points on the chart.
+
 ## [0.43.0] - 2026-11-18
 
 ### Added

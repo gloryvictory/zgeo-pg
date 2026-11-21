@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import datetime
+import time
 from dataclasses import replace
 from typing import Dict, List, Optional, Tuple
 
@@ -49,7 +51,9 @@ from .catalog import (
     parse_srid,
     reindex_spatial_index,
 )
-from .charts import BarChart
+from . import check_history
+from .charts import BarChart, LineChart
+from .check_history import KIND_ATTRIBUTE, KIND_SPATIAL
 from .connection import (
     PGConnection,
     close_connection,
@@ -410,6 +414,9 @@ class QualityTabPage(QWidget):
         # Пространственная вкладка умеет загружать слой в проект QGIS,
         # атрибутная — нет: у неё нет таблиц с геометрией.
         self._spatial = any(getattr(check, "sql", None) for check in self._checks)
+        # Метка текущего прогона: все результаты одного запуска пишутся в
+        # историю с одним run_id.
+        self._run_id = ""
         self._build()
 
     # ------------------------------------------------------------------ UI
@@ -663,6 +670,12 @@ class QualityTabPage(QWidget):
         self._problems = 0
         self._errors = 0
         self._state = ("running", "")
+        # Микросекунды в метке: два прогона подряд в одну секунду иначе
+        # слились бы в один на графике динамики.
+        self._run_id = "{}-{}".format(
+            "spatial" if self._spatial else "attribute",
+            datetime.datetime.now().strftime("%Y%m%d%H%M%S%f"),
+        )
         self._build_table(checks)
 
         try:
@@ -761,6 +774,25 @@ class QualityTabPage(QWidget):
             self._problems += int(count)
         self._render_cell(row, column, count, error)
         self.export_button.setEnabled(True)
+
+        # Каждый результат сразу попадает в историю, поэтому статистика и
+        # график обновляются по ходу прогона.
+        table = self._table_of.get(row)
+        if table is not None:
+            check = check_by_key(key)
+            self._host._save_check_history(
+                self,
+                [
+                    (
+                        table.schema,
+                        table.name,
+                        key,
+                        check.title if check is not None else key,
+                        count,
+                        error or "",
+                    )
+                ],
+            )
 
     def _on_check_details(self, key: str, table_name: str, details) -> None:
         """Запомнить подробный список дублей для ячейки."""
@@ -917,6 +949,39 @@ class QualityTabPage(QWidget):
             self._state = ("done", "")
             self._host._set_status(tr("Готово"))
         self._render_summary()
+        if not cancelled:
+            # В конце прогона история обновляется принудительно: по ходу
+            # работы обновления идут с ограничением по времени.
+            self._host._refresh_history_tab(force=True)
+
+    def run_id(self) -> str:
+        """Метка текущего прогона проверок."""
+
+        return self._run_id
+
+    def result_rows(self) -> List[Tuple[str, str, str, str, object, str]]:
+        """Результаты прогона для истории: схема, таблица, ключ, название, N, ошибка."""
+
+        rows: List[Tuple[str, str, str, str, object, str]] = []
+        tables = {row_key(table): table for table in self._host._tables}
+        for table_name, results in self._results.items():
+            table = tables.get(table_name)
+            if table is None:
+                continue
+            for key, (count, error) in results.items():
+                check = check_by_key(key)
+                title = check.title if check is not None else key
+                rows.append(
+                    (
+                        table.schema,
+                        table.name,
+                        key,
+                        title,
+                        count,
+                        error or "",
+                    )
+                )
+        return rows
 
     # ------------------------------------------------------------- export
     def export_rows(self) -> Tuple[List[str], List[List[object]]]:
@@ -1754,6 +1819,23 @@ class ZGeoPgPanel(QDockWidget):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(6, 6, 6, 6)
 
+        # Внутри «Статистики» две подвкладки: общие диаграммы и история
+        # проверок качества.
+        self._stats_tabs = QTabWidget()
+        self._stats_tabs.addTab(self._build_stats_general(), tr("Общее"))
+        self._stats_tabs.addTab(self._build_stats_checks(), tr("Проверки"))
+        layout.addWidget(self._stats_tabs, 1)
+
+        self._stats_page = page
+        self._tabs.addTab(page, tr("Статистика"))
+
+    def _build_stats_general(self) -> QWidget:
+        """Подвкладка «Общее»: диаграммы по размеру, типу геометрии и схемам."""
+
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(6, 6, 6, 6)
+
         self._size_chart = BarChart()
         self._geom_chart = BarChart()
         layout.addWidget(self._size_chart)
@@ -1777,9 +1859,62 @@ class ZGeoPgPanel(QDockWidget):
         stats_bar.addStretch(1)
 
         layout.addLayout(stats_bar)
+        return page
 
-        self._stats_page = page
-        self._tabs.addTab(page, tr("Статистика"))
+    def _build_stats_checks(self) -> QWidget:
+        """Подвкладка «Проверки»: история прогонов и график динамики."""
+
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(6, 6, 6, 6)
+
+        # Сигналы подключаются после создания всех виджетов: addItem сразу
+        # вызывает обработчик, а он обращается к таблице и графику.
+        self._history_kind = KIND_SPATIAL
+
+        controls = QHBoxLayout()
+        self._stats_kind_label = QLabel()
+        controls.addWidget(self._stats_kind_label)
+        self._stats_kind_combo = QComboBox()
+        self._stats_kind_combo.addItem(tr("Пространственные данные"), KIND_SPATIAL)
+        self._stats_kind_combo.addItem(tr("Атрибутивные данные"), KIND_ATTRIBUTE)
+        controls.addWidget(self._stats_kind_combo)
+
+        self._stats_check_label = QLabel()
+        controls.addWidget(self._stats_check_label)
+        self._stats_check_combo = QComboBox()
+        controls.addWidget(self._stats_check_combo, 1)
+
+        self._stats_refresh_button = QPushButton()
+        self._stats_refresh_button.clicked.connect(self._reload_history)
+        controls.addWidget(self._stats_refresh_button)
+
+        self._stats_clear_button = QPushButton()
+        self._stats_clear_button.clicked.connect(self._on_history_clear)
+        controls.addWidget(self._stats_clear_button)
+        layout.addLayout(controls)
+
+        self._history_chart = LineChart()
+        layout.addWidget(self._history_chart)
+
+        self._history_table = QTableWidget(0, 5)
+        self._history_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._history_table.verticalHeader().setVisible(False)
+        self._history_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        layout.addWidget(self._history_table, 1)
+
+        self._history_summary = QLabel()
+        layout.addWidget(self._history_summary)
+
+        self._stats_kind_combo.currentIndexChanged.connect(
+            self._on_history_kind_changed
+        )
+        self._stats_check_combo.currentIndexChanged.connect(
+            self._on_history_filter_changed
+        )
+        return page
 
     def current_connection(self) -> Optional[PGConnection]:
         """Текущее подключение панели: его же можно выбрать на вкладке НСИ."""
@@ -1948,6 +2083,28 @@ class ZGeoPgPanel(QDockWidget):
         self._tabs.setTabText(self._tabs.indexOf(self._tables_page), tr("Таблицы"))
         self._tabs.setTabText(self._tabs.indexOf(self._stats_page), tr("Статистика"))
         self._tabs.setTabText(self._tabs.indexOf(self._nsi_page), tr("Качество по НСИ"))
+        if hasattr(self, "_stats_tabs"):
+            self._stats_tabs.setTabText(0, tr("Общее"))
+            self._stats_tabs.setTabText(1, tr("Проверки"))
+            self._stats_kind_label.setText(tr("Проверки"))
+            self._stats_check_label.setText(tr("Проверка"))
+            self._stats_refresh_button.setText(tr("Обновить"))
+            self._stats_clear_button.setText(tr("Очистить историю"))
+            self._history_table.setHorizontalHeaderLabels(
+                [
+                    tr("Дата"),
+                    tr("Соединение"),
+                    tr("Таблица"),
+                    tr("Проверка"),
+                    tr("Проблем"),
+                ]
+            )
+            for index, source in enumerate(
+                (tr("Пространственные данные"), tr("Атрибутивные данные"))
+            ):
+                self._stats_kind_combo.setItemText(index, source)
+            self._fill_history_checks()
+            self._reload_history()
         self._nsi_page.retranslate()
         for page in self._quality_pages:
             self._tabs.setTabText(self._tabs.indexOf(page), tr(page.title_source))
@@ -2389,6 +2546,119 @@ class ZGeoPgPanel(QDockWidget):
         )
 
     # -------------------------------------------------------------- stats tab
+    # ------------------------------------------------------ история проверок
+    def _on_history_kind_changed(self, *_args) -> None:
+        """Переключить вид проверок: пространственные или атрибутивные."""
+
+        self._history_kind = self._stats_kind_combo.currentData() or KIND_SPATIAL
+        self._fill_history_checks()
+        self._reload_history()
+
+    def _on_history_filter_changed(self, *_args) -> None:
+        self._reload_history()
+
+    def _fill_history_checks(self) -> None:
+        """Заполнить список проверок, встречавшихся в истории."""
+
+        current = self._stats_check_combo.currentData()
+        self._stats_check_combo.blockSignals(True)
+        self._stats_check_combo.clear()
+        self._stats_check_combo.addItem(tr("Все проверки"), "")
+        for key, title in check_history.check_keys(self._history_kind):
+            self._stats_check_combo.addItem(tr(title), key)
+        index = self._stats_check_combo.findData(current)
+        self._stats_check_combo.setCurrentIndex(max(0, index))
+        self._stats_check_combo.blockSignals(False)
+
+    def _reload_history(self) -> None:
+        """Перечитать историю проверок и перерисовать график."""
+
+        kind = self._history_kind
+        key = self._stats_check_combo.currentData() or ""
+        records = check_history.history(kind, key, limit=300)
+        self._history_table.setRowCount(len(records))
+        for row, record in enumerate(records):
+            values = (
+                record.created,
+                record.connection,
+                record.table_full_name,
+                tr(record.check_title or record.check_key),
+                record.problems if not record.error else tr("Ошибка"),
+            )
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(str(value))
+                if column == 4 and isinstance(value, int):
+                    item.setData(Qt.ItemDataRole.UserRole, value)
+                self._history_table.setItem(row, column, item)
+        self._history_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.ResizeToContents
+        )
+        self._history_table.horizontalHeader().setStretchLastSection(True)
+
+        points = check_history.series(kind, key, limit=30)
+        labels = [created[5:16] for created, _value in points]
+        values = [value for _created, value in points]
+        self._history_chart.set_title(
+            tr("Динамика проблем") if key else tr("Динамика по всем проверкам")
+        )
+        self._history_chart.set_points(labels, values)
+
+        if records:
+            self._history_summary.setText(
+                tr("Записей в истории: {}").format(len(records))
+                + " — "
+                + tr("прогонов на графике: {}").format(len(points))
+            )
+        else:
+            self._history_summary.setText(tr("История проверок пуста"))
+
+    def _on_history_clear(self) -> None:
+        """Удалить историю выбранного вида проверок."""
+
+        kind = self._history_kind
+        if not check_history.clear(kind):
+            return
+        self._fill_history_checks()
+        self._reload_history()
+
+    def _save_check_history(self, page, rows, run_id: str = "") -> None:
+        """Сохранить результаты прогона проверок в SQLite.
+
+        Все результаты одного прогона идут с одной меткой ``run_id``, поэтому
+        на графике динамики прогон — это одна точка.
+        """
+
+        if not rows:
+            return
+        connection_name = self._conn.name if self._conn is not None else ""
+        kind = KIND_SPATIAL if page is self._quality_pages[0] else KIND_ATTRIBUTE
+        if not run_id:
+            run_id = page.run_id() if hasattr(page, "run_id") else ""
+        if not run_id:
+            run_id = "{}-{}".format(
+                kind, datetime.datetime.now().isoformat(timespec="seconds")
+            )
+        saved = check_history.record_run(kind, run_id, connection_name, rows)
+        if saved:
+            self._refresh_history_tab()
+
+    def _refresh_history_tab(self, force: bool = False) -> None:
+        """Обновить подвкладку «Проверки» после нового прогона.
+
+        Результаты приходят по одному, поэтому перечитывать историю на каждый
+        из них дорого: обновление идёт не чаще раза в полсекунды, а в конце
+        прогона вызывается принудительно.
+        """
+
+        if not hasattr(self, "_stats_tabs"):
+            return
+        now = time.monotonic()
+        if not force and now - getattr(self, "_history_refreshed", 0.0) < 0.5:
+            return
+        self._history_refreshed = now
+        self._fill_history_checks()
+        self._reload_history()
+
     def _populate_stats(self) -> None:
         size_stats = build_size_distribution(self._tables)
         self._size_chart.set_title(tr("По размеру"))
