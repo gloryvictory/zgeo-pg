@@ -3,6 +3,19 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.41.0] - 2026-11-18
+
+### Added
+
+- A "Screenshots" section in README.md and README_eng.md with five interface
+  images from the `img/` folder: connections, tables, statistics, geospatial
+  data quality and attribute data quality.
+
+### Changed
+
+- The project structure section lists the `img/` folder, and the screenshots
+  ship inside the plugin archive.
+
 ## [0.40.0] - 2026-11-18
 
 ### Added

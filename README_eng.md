@@ -4,7 +4,7 @@
 
 QGIS plugin for viewing spatial data stored in a PostgreSQL / PostGIS database.
 
-Plugin version: **0.40.0**  
+Plugin version: **0.41.0**  
 Release history: [change.log](change.log)
 
 The plugin adds a **"ZGeo-PG"** toolbar panel in QGIS with a **"ZGeo-PG Catalog"** button that opens a floating panel. In the panel:
@@ -40,6 +40,28 @@ The plugin adds a **"ZGeo-PG"** toolbar panel in QGIS with a **"ZGeo-PG Catalog"
 - a "Thresholds" button on the spatial checks tab sets the maximum vertices, the minimum polygon area (planar and in m²), the minimum line length (planar and in metres), the tolerance for near duplicates and the maximum sliver area (planar and in metres/m²), the maximum parts, the maximum geometry size and the statistics staleness; the values are stored in the QGIS settings;
 - check titles, summaries, full descriptions and fix hints are translated into English and follow the interface language, including already rendered results and an open description.
 
+## Screenshots
+
+**"Connections" tab** — connection parameters, the list of saved connections and the connect buttons.
+
+<img src="img/screen_1.png" alt="Connections tab" width="560">
+
+**"Tables" tab** — the list of spatial tables with comment, SRID, sizes and the spatial index.
+
+<img src="img/screen_2.png" alt="Tables tab" width="560">
+
+**"Statistics" tab** — charts by table size and geometry type plus statistics by schema.
+
+<img src="img/screen_3.png" alt="Statistics tab" width="560">
+
+**"Geospatial data quality" tab** — 37 checks with checkboxes, "i" buttons, "Select all", "Clear all", "Defaults", "Thresholds" and the results grid.
+
+<img src="img/screen_4.png" alt="Geospatial data quality tab" width="560">
+
+**"Attribute data quality" tab** — 11 attribute checks with the check description on the right and the detailed duplicate list on a double click.
+
+<img src="img/screen_5.png" alt="Attribute data quality tab" width="560">
+
 The plugin supports QGIS 3.16 and newer, including QGIS 4 / Qt 6.
 
 ## Project Structure
@@ -69,6 +91,7 @@ zgeo-pg/
 ├── table_export.py      # export tables with file selection
 ├── version.py           # plugin version from metadata.txt
 ├── icon.svg             # plugin icon
+├── img/                 # interface screenshots for the documentation
 ├── LICENSE.md           # MIT license
 ├── scripts/             # build scripts
 └── .gitignore           # ignored files
@@ -94,7 +117,7 @@ Build the archive:
 powershell -ExecutionPolicy Bypass -File .\scripts\build_zip.ps1
 ```
 
-The ready file will appear in `dist\zgeo-pg-0.40.0.zip`. Only the latest build is kept in `dist`. The script first closes a running QGIS Desktop (it keeps the plugin files locked, so the copy fails otherwise), installs the build into the QGIS Desktop 4.x profile (`%APPDATA%\QGIS\QGIS4\profiles\<profile>\python\plugins\zgeo-pg`) and starts QGIS again. Pass `-SkipQGISInstall` to only build the archive, and `-NoRestart` to leave QGIS closed.
+The ready file will appear in `dist\zgeo-pg-0.41.0.zip`. Only the latest build is kept in `dist`. The script first closes a running QGIS Desktop (it keeps the plugin files locked, so the copy fails otherwise), installs the build into the QGIS Desktop 4.x profile (`%APPDATA%\QGIS\QGIS4\profiles\<profile>\python\plugins\zgeo-pg`) and starts QGIS again. Pass `-SkipQGISInstall` to only build the archive, and `-NoRestart` to leave QGIS closed.
 
 Or install it manually. In QGIS open:
 
