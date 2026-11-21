@@ -3,6 +3,26 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.36.0] - 2026-11-18
+
+### Added
+
+- Six instant catalog checks: "Раздувание таблицы" (dead rows above the
+  threshold from the settings), "Нет первичного ключа", "Геометрия не первая в
+  индексе", "Нет комментария к таблице", "Схема вне search_path" and
+  "Геометрия из чужой схемы".
+- A new threshold, "Доля мёртвых строк, %" (20 % by default), in the
+  thresholds dialog.
+
+### Fixed
+
+- Results were keyed by `schema.table`, so a table with two geometry columns
+  produced two identical rows and only the last one received values. The row
+  key now includes the geometry column (`row_key()`).
+- The geometry type check compared `atttypid = 'geometry'::regtype` and missed
+  columns declared through a domain in another schema; it compares the type
+  name now.
+
 ## [0.35.0] - 2026-11-18
 
 ### Changed

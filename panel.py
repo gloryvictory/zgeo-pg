@@ -73,6 +73,7 @@ from .nsi import (
 )
 from .quality import (
     ATTRIBUTE_CHECKS,
+    row_key,
     THRESHOLD_DEFAULTS,
     QUALITY_CHECKS,
     AttributeTask,
@@ -121,6 +122,7 @@ class ThresholdsDialog(QDialog):
         ("max_parts", "Максимум частей в объекте", 1, 1000000),
         ("max_bytes", "Максимум размера геометрии, байт", 1024, 1000000000),
         ("stale_days", "Устаревание статистики, дней", 1, 3650),
+        ("dead_tuple_ratio", "Доля мёртвых строк, %", 1, 100),
     )
 
     def __init__(self, parent) -> None:
@@ -171,7 +173,8 @@ class ThresholdsDialog(QDialog):
                 "Пороги применяются к проверкам «Слишком много вершин», "
                 "«Микрообъекты», «Микролинии», «Слишком много частей», «Очень "
                 "крупная геометрия», «Устаревшая статистика таблицы», «Почти "
-                "дубли геометрий» и «Сливеры (узкие щели)»."
+                "дубли геометрий», «Сливеры (узкие щели)» и «Раздувание "
+                "таблицы»."
             )
         )
 
@@ -551,7 +554,9 @@ class QualityTabPage(QWidget):
         self.table.setRowCount(len(self._host._tables))
         self._row_of = {}
         for row, table in enumerate(self._host._tables):
-            self._row_of[table.full_name] = row
+            # Ключ включает столбец геометрии: у таблицы их может быть
+            # несколько, и тогда схема с именем совпадают.
+            self._row_of[row_key(table)] = row
             self.table.setItem(row, 0, QTableWidgetItem(table.schema))
             self.table.setItem(row, 1, QTableWidgetItem(table.name))
         self.table.horizontalHeader().setSectionResizeMode(

@@ -48,6 +48,9 @@ THRESHOLD_DEFAULTS = {
     # Площадь наложения, ниже которой пересечение считается сливером.
     "sliver_area": 1.0,
     "sliver_area_geographic": 100.0,
+    # Доля мёртвых строк (в процентах), после которой таблица считается
+    # раздутой.
+    "dead_tuple_ratio": 20,
 }
 
 THRESHOLD_KEY = "zgeopg/quality"
@@ -496,6 +499,173 @@ QUALITY_CHECKS: List[QualityCheck] = [
             "    AND s.n_live_tup > 0 "
             "    AND coalesce(greatest(s.last_analyze, s.last_autoanalyze), "
             "        '-infinity'::timestamptz) < now() - interval '{stale_days} days'"
+            ") THEN 1 ELSE 0 END"
+        ),
+    ),
+    QualityCheck(
+        key="table_bloat",
+        title="Раздувание таблицы",
+        summary="Мёртвых строк больше порога от числа живых.",
+        description=(
+            "PostgreSQL хранит мёртвые строки до очистки, и pg_stat_user_tables "
+            "показывает их число. Если мёртвых строк больше порога из настроек "
+            "(по умолчанию 20 % от живых), таблица занимает лишнее место, а "
+            "чтение проходит по страницам, где уже нет нужных данных: карта, "
+            "выборки и проверки качества замедляются. Сведения берутся из "
+            "каталога, данные не читаются."
+        ),
+        fix=(
+            "Очистить таблицу: VACUUM (ANALYZE) <схема>.<таблица>; при сильном "
+            "раздувании — VACUUM FULL (блокирует запись) или pg_repack."
+        ),
+        from_catalog=True,
+        catalog_sql=(
+            "SELECT CASE WHEN EXISTS ("
+            "  SELECT 1 FROM pg_catalog.pg_stat_user_tables s "
+            "  WHERE s.schemaname = {schema_lit} AND s.relname = {name_lit} "
+            "    AND s.n_dead_tup > s.n_live_tup * {dead_ratio} / 100.0"
+            ") THEN 1 ELSE 0 END"
+        ),
+    ),
+    QualityCheck(
+        key="no_primary_key",
+        title="Нет первичного ключа",
+        summary="У таблицы нет ограничения PRIMARY KEY.",
+        description=(
+            "Каталог показывает, что первичного ключа нет. Такую таблицу нельзя "
+            "корректно редактировать в QGIS: слой открывается только на чтение, "
+            "потому что редактору нечем однозначно указать строку. Кроме того, "
+            "ничто не мешает появлению полных дублей. Проверка мгновенная, "
+            "данные не читаются."
+        ),
+        fix=(
+            "Добавить первичный ключ: ALTER TABLE ... ADD PRIMARY KEY (id) или "
+            "создать столбец-идентификатор (GENERATED ALWAYS AS IDENTITY)."
+        ),
+        from_catalog=True,
+        catalog_sql=(
+            "SELECT CASE WHEN EXISTS ("
+            "  SELECT 1 FROM pg_catalog.pg_class c "
+            "  JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+            "  WHERE n.nspname = {schema_lit} AND c.relname = {name_lit} "
+            "    AND NOT EXISTS ("
+            "      SELECT 1 FROM pg_catalog.pg_index i "
+            "      WHERE i.indrelid = c.oid AND i.indisprimary"
+            "    )"
+            ") THEN 1 ELSE 0 END"
+        ),
+    ),
+    QualityCheck(
+        key="geometry_not_first_in_index",
+        title="Геометрия не первая в индексе",
+        summary="В индексе первым идёт другой столбец, поэтому фильтры его не используют.",
+        description=(
+            "Индекс по геометрии составной и геометрический столбец стоит в нём "
+            "не первым (например, (тип, geom)). PostGIS использует такой индекс "
+            "только при условии по первому столбцу, поэтому поиск по рамке и "
+            "ST_Intersects его не применяют. Индекс занимает место и замедляет "
+            "вставку. Сведения берутся из каталога, данные не читаются."
+        ),
+        fix=(
+            "Построить отдельный индекс по геометрии: CREATE INDEX ... ON ... "
+            "USING gist (geom) — или переставить столбцы в существующем."
+        ),
+        from_catalog=True,
+        catalog_sql=(
+            "SELECT CASE WHEN EXISTS ("
+            "  SELECT 1 FROM pg_catalog.pg_index i "
+            "  JOIN pg_catalog.pg_class c ON c.oid = i.indrelid "
+            "  JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+            "  JOIN pg_catalog.pg_class idx ON idx.oid = i.indexrelid "
+            "  JOIN pg_catalog.pg_am am ON am.oid = idx.relam "
+            "  JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid "
+            "    AND a.attname = {geom_lit} "
+            "  WHERE n.nspname = {schema_lit} AND c.relname = {name_lit} "
+            "    AND am.amname IN ('gist', 'spgist') "
+            "    AND a.attnum = ANY (i.indkey) "
+            "    AND i.indkey[0] <> a.attnum"
+            ") THEN 1 ELSE 0 END"
+        ),
+    ),
+    QualityCheck(
+        key="no_table_comment",
+        title="Нет комментария к таблице",
+        summary="У таблицы нет описания в каталоге.",
+        description=(
+            "Слой без комментария непонятен пользователю: в списке таблиц вместо "
+            "описания пусто, и приходится угадывать содержимое по имени. "
+            "Комментарий виден в QGIS, в каталоге и в выгрузках плагина, поэтому "
+            "это дешёвый способ задокументировать данные. Проверка мгновенная, "
+            "данные не читаются."
+        ),
+        fix=(
+            "Добавить описание: COMMENT ON TABLE <схема>.<таблица> IS 'что это за "
+            "данные'."
+        ),
+        from_catalog=True,
+        catalog_sql=(
+            "SELECT CASE WHEN ("
+            "  SELECT pg_catalog.obj_description(c.oid, 'pg_class') "
+            "  FROM pg_catalog.pg_class c "
+            "  JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+            "  WHERE n.nspname = {schema_lit} AND c.relname = {name_lit}"
+            ") IS NULL THEN 1 ELSE 0 END"
+        ),
+    ),
+    QualityCheck(
+        key="schema_not_in_search_path",
+        title="Схема вне search_path",
+        summary="Схемы таблицы нет в пути поиска текущего соединения.",
+        description=(
+            "PostgreSQL ищет объекты без указания схемы по search_path. Если "
+            "схемы таблицы в нём нет, слой может «пропасть»: QGIS и другие "
+            "клиенты не находят таблицу по короткому имени, а функции PostGIS "
+            "возвращают ошибку. Плагин добавляет в путь public, postgis и "
+            "topology, поэтому проверка ловит слои из остальных схем. Сведения "
+            "берутся из каталога, данные не читаются."
+        ),
+        fix=(
+            "Добавить схему в путь поиска: SET search_path TO <схема>, public или "
+            "ALTER DATABASE ... SET search_path."
+        ),
+        from_catalog=True,
+        catalog_sql=(
+            "SELECT CASE WHEN NOT EXISTS ("
+            "  SELECT 1 FROM unnest("
+            "    string_to_array(current_setting('search_path'), ',')"
+            "  ) AS s WHERE btrim(s) = {schema_lit}"
+            ") THEN 1 ELSE 0 END"
+        ),
+    ),
+    QualityCheck(
+        key="geometry_type_schema",
+        title="Геометрия из чужой схемы",
+        summary="Тип geometry принадлежит нестандартной схеме.",
+        description=(
+            "Тип столбца geometry зарегистрирован не в public, а в другой схеме "
+            "(например, после переноса базы или установки расширения в отдельную "
+            "схему). При восстановлении дампа или переносе в другую базу такой "
+            "столбец не находится, и таблица читается как обычная без геометрии. "
+            "Сведения берутся из каталога, данные не читаются."
+        ),
+        fix=(
+            "Перенести тип в public: ALTER EXTENSION postgis SET SCHEMA public "
+            "или привести столбец к public.geometry."
+        ),
+        from_catalog=True,
+        catalog_sql=(
+            "SELECT CASE WHEN EXISTS ("
+            "  SELECT 1 FROM pg_catalog.pg_attribute a "
+            "  JOIN pg_catalog.pg_class c ON c.oid = a.attrelid "
+            "  JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+            "  JOIN pg_catalog.pg_type t ON t.oid = a.atttypid "
+            "  JOIN pg_catalog.pg_namespace tn ON tn.oid = t.typnamespace "
+            "  WHERE n.nspname = {schema_lit} AND c.relname = {name_lit} "
+            "    AND a.attnum > 0 AND NOT a.attisdropped "
+            # Сравниваем по имени типа: столбец может быть объявлен через
+            # домен gis.geometry, и тогда atttypid уже не равен geometry.
+            "    AND t.typname = 'geometry' "
+            "    AND tn.nspname <> 'public'"
             ") THEN 1 ELSE 0 END"
         ),
     ),
@@ -1137,6 +1307,17 @@ ATTRIBUTE_CHECKS: List[AttributeCheck] = [
 QUALITY_CHECKS.sort(key=lambda check: 0 if check.from_catalog else 1)
 
 
+def row_key(table: SpatialTable) -> str:
+    """Ключ строки результатов: схема, таблица и столбец геометрии.
+
+    У одной таблицы бывает несколько геометрических столбцов, и тогда
+    full_name совпадает у двух строк, из-за чего результаты попадали только
+    в последнюю.
+    """
+
+    return table.full_name + " | " + (table.geom_column or "")
+
+
 def check_by_key(key: str):
     """Найти проверку (пространственную или атрибутивную) по её ключу."""
 
@@ -1170,7 +1351,9 @@ def build_catalog_sql(
     return template.format(
         schema_lit=_sql_literal(table.schema),
         name_lit=_sql_literal(table.name),
+        geom_lit=_sql_literal(table.geom_column or "geom"),
         stale_days=int(thresholds.get("stale_days", 30)),
+        dead_ratio=int(thresholds.get("dead_tuple_ratio", 20)),
     )
 
 
@@ -1576,9 +1759,9 @@ class AttributeTask(QThread):
                             details = duplicate_details(db, table, columns)
                     except Exception as exc:  # noqa: BLE001
                         error = str(exc)
-                    self.check_done.emit(check.key, table.full_name, count, error)
+                    self.check_done.emit(check.key, row_key(table), count, error)
                     if details:
-                        self.check_details.emit(check.key, table.full_name, details)
+                        self.check_details.emit(check.key, row_key(table), details)
                     done += 1
                     self.progress.emit(done, total)
             self.finished_all.emit(False, "")
@@ -1640,7 +1823,7 @@ class QualityTask(QThread):
                         count = run_check(db, table, check, self._thresholds)
                     except Exception as exc:  # noqa: BLE001
                         error = str(exc)
-                    self.check_done.emit(check.key, table.full_name, count, error)
+                    self.check_done.emit(check.key, row_key(table), count, error)
                     done += 1
                     self.progress.emit(done, total)
             self.finished_all.emit(False, "")

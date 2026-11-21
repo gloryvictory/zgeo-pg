@@ -828,8 +828,58 @@ EN_TRANSLATIONS = {
     "Допуск для почти дублей, м": "Tolerance for near duplicates, m",
     "Максимальная площадь сливера": "Maximum sliver area",
     "Максимальная площадь сливера, м²": "Maximum sliver area, m²",
-    "Пороги применяются к проверкам «Слишком много вершин», «Микрообъекты», «Микролинии», «Слишком много частей», «Очень крупная геометрия», «Устаревшая статистика таблицы», «Почти дубли геометрий» и «Сливеры (узкие щели)».": (
-        "The thresholds apply to the checks \"Too many vertices\", \"Tiny polygons\", \"Tiny lines\", \"Too many parts\", \"Very large geometry\", \"Stale table statistics\", \"Near-duplicate geometries\" and \"Slivers (narrow gaps)\"."
+
+    "Раздувание таблицы": "Table bloat",
+    "Мёртвых строк больше порога от числа живых.": "Dead rows exceed the configured share of live rows.",
+    "PostgreSQL хранит мёртвые строки до очистки, и pg_stat_user_tables показывает их число. Если мёртвых строк больше порога из настроек (по умолчанию 20 % от живых), таблица занимает лишнее место, а чтение проходит по страницам, где уже нет нужных данных: карта, выборки и проверки качества замедляются. Сведения берутся из каталога, данные не читаются.": (
+        "PostgreSQL keeps dead rows until they are cleaned up, and pg_stat_user_tables reports their count. If dead rows exceed the threshold from the settings (20 % of live rows by default), the table takes extra space and reads walk through pages that no longer hold the needed data: the map, selections and quality checks slow down. The information comes from the catalog, the data is not read."
+    ),
+    "Очистить таблицу: VACUUM (ANALYZE) <схема>.<таблица>; при сильном раздувании — VACUUM FULL (блокирует запись) или pg_repack.": (
+        "Clean the table up: VACUUM (ANALYZE) <schema>.<table>; with heavy bloat use VACUUM FULL (it blocks writes) or pg_repack."
+    ),
+    "Нет первичного ключа": "No primary key",
+    "У таблицы нет ограничения PRIMARY KEY.": "The table has no PRIMARY KEY constraint.",
+    "Каталог показывает, что первичного ключа нет. Такую таблицу нельзя корректно редактировать в QGIS: слой открывается только на чтение, потому что редактору нечем однозначно указать строку. Кроме того, ничто не мешает появлению полных дублей. Проверка мгновенная, данные не читаются.": (
+        "The catalog shows there is no primary key. Such a table cannot be edited in QGIS properly: the layer opens read-only because the editor has no way to address a single row. Nothing prevents exact duplicate rows either. The check is instant and does not read the data."
+    ),
+    "Добавить первичный ключ: ALTER TABLE ... ADD PRIMARY KEY (id) или создать столбец-идентификатор (GENERATED ALWAYS AS IDENTITY).": (
+        "Add a primary key: ALTER TABLE ... ADD PRIMARY KEY (id) or create an identifier column (GENERATED ALWAYS AS IDENTITY)."
+    ),
+    "Геометрия не первая в индексе": "Geometry is not first in the index",
+    "В индексе первым идёт другой столбец, поэтому фильтры его не используют.": "Another column comes first in the index, so spatial filters do not use it.",
+    "Индекс по геометрии составной и геометрический столбец стоит в нём не первым (например, (тип, geom)). PostGIS использует такой индекс только при условии по первому столбцу, поэтому поиск по рамке и ST_Intersects его не применяют. Индекс занимает место и замедляет вставку. Сведения берутся из каталога, данные не читаются.": (
+        "The geometry index is composite and the geometry column is not first in it (for example (kind, geom)). PostGIS uses such an index only with a condition on the first column, so bounding box searches and ST_Intersects skip it. The index takes space and slows inserts down. The information comes from the catalog, the data is not read."
+    ),
+    "Построить отдельный индекс по геометрии: CREATE INDEX ... ON ... USING gist (geom) — или переставить столбцы в существующем.": (
+        "Build a separate index on the geometry: CREATE INDEX ... ON ... USING gist (geom) — or reorder the columns of the existing one."
+    ),
+    "Нет комментария к таблице": "No table comment",
+    "У таблицы нет описания в каталоге.": "The table has no description in the catalog.",
+    "Слой без комментария непонятен пользователю: в списке таблиц вместо описания пусто, и приходится угадывать содержимое по имени. Комментарий виден в QGIS, в каталоге и в выгрузках плагина, поэтому это дешёвый способ задокументировать данные. Проверка мгновенная, данные не читаются.": (
+        "A layer without a comment is unclear to the user: the table list shows an empty description and the content has to be guessed from the name. The comment is visible in QGIS, in the catalog and in the plugin exports, so it is a cheap way to document the data. The check is instant and does not read the data."
+    ),
+    "Добавить описание: COMMENT ON TABLE <схема>.<таблица> IS 'что это за данные'.": (
+        "Add a description: COMMENT ON TABLE <schema>.<table> IS 'what this data is'."
+    ),
+    "Схема вне search_path": "Schema is outside search_path",
+    "Схемы таблицы нет в пути поиска текущего соединения.": "The table schema is missing from the search path of the connection.",
+    "PostgreSQL ищет объекты без указания схемы по search_path. Если схемы таблицы в нём нет, слой может «пропасть»: QGIS и другие клиенты не находят таблицу по короткому имени, а функции PostGIS возвращают ошибку. Плагин добавляет в путь public, postgis и topology, поэтому проверка ловит слои из остальных схем. Сведения берутся из каталога, данные не читаются.": (
+        "PostgreSQL looks up unqualified objects through search_path. If the table schema is not in it, the layer may disappear: QGIS and other clients cannot find the table by its short name and PostGIS functions return an error. The plugin adds public, postgis and topology to the path, so the check catches layers from other schemas. The information comes from the catalog, the data is not read."
+    ),
+    "Добавить схему в путь поиска: SET search_path TO <схема>, public или ALTER DATABASE ... SET search_path.": (
+        "Add the schema to the search path: SET search_path TO <schema>, public or ALTER DATABASE ... SET search_path."
+    ),
+    "Геометрия из чужой схемы": "Geometry type from another schema",
+    "Тип geometry принадлежит нестандартной схеме.": "The geometry type belongs to a non-standard schema.",
+    "Тип столбца geometry зарегистрирован не в public, а в другой схеме (например, после переноса базы или установки расширения в отдельную схему). При восстановлении дампа или переносе в другую базу такой столбец не находится, и таблица читается как обычная без геометрии. Сведения берутся из каталога, данные не читаются.": (
+        "The geometry column type is registered not in public but in another schema (for example after moving the database or installing the extension into a separate schema). When a dump is restored or the table is moved to another database, such a column is not found and the table reads as an ordinary one without geometry. The information comes from the catalog, the data is not read."
+    ),
+    "Перенести тип в public: ALTER EXTENSION postgis SET SCHEMA public или привести столбец к public.geometry.": (
+        "Move the type into public: ALTER EXTENSION postgis SET SCHEMA public or cast the column to public.geometry."
+    ),
+    "Доля мёртвых строк, %": "Dead row share, %",
+    "Пороги применяются к проверкам «Слишком много вершин», «Микрообъекты», «Микролинии», «Слишком много частей», «Очень крупная геометрия», «Устаревшая статистика таблицы», «Почти дубли геометрий», «Сливеры (узкие щели)» и «Раздувание таблицы».": (
+        "The thresholds apply to the checks \"Too many vertices\", \"Tiny polygons\", \"Tiny lines\", \"Too many parts\", \"Very large geometry\", \"Stale table statistics\", \"Near-duplicate geometries\", \"Slivers (narrow gaps)\" and \"Table bloat\"."
     ),
 
     # Качество по НСИ
