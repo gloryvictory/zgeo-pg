@@ -3,6 +3,14 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.39.0] - 2026-11-18
+
+### Added
+
+- "Выбрать все" and "Сбросить все" buttons under the check list of both
+  quality tabs: with 37 spatial and 11 attribute checks, ticking them one by
+  one is tedious.
+
 ## [0.38.0] - 2026-11-18
 
 ### Added

@@ -368,6 +368,19 @@ class QualityTabPage(QWidget):
         checks_layout.addStretch(1)
         self.checks_area.setWidget(checks_content)
         box_layout.addWidget(self.checks_area)
+
+        # Кнопки массового выбора проверок: список длинный, отмечать
+        # тридцать галочек по одной неудобно.
+        select_row = QHBoxLayout()
+        self.select_all_button = QPushButton()
+        self.select_all_button.clicked.connect(self._select_all)
+        select_row.addWidget(self.select_all_button)
+        self.clear_all_button = QPushButton()
+        self.clear_all_button.clicked.connect(self._clear_all)
+        select_row.addWidget(self.clear_all_button)
+        select_row.addStretch(1)
+        box_layout.addLayout(select_row)
+
         checks_box.setMinimumWidth(260)
         splitter.addWidget(checks_box)
 
@@ -424,10 +437,24 @@ class QualityTabPage(QWidget):
         dialog = ThresholdsDialog(self)
         dialog.exec()
 
+    def _select_all(self) -> None:
+        """Включить все проверки вкладки."""
+
+        for box in self._boxes.values():
+            box.setChecked(True)
+
+    def _clear_all(self) -> None:
+        """Снять все галочки проверок вкладки."""
+
+        for box in self._boxes.values():
+            box.setChecked(False)
+
     def retranslate(self) -> None:
         """Обновить все подписи вкладки при смене языка."""
 
         self.checks_box.setTitle(tr("Проверки"))
+        self.select_all_button.setText(tr("Выбрать все"))
+        self.clear_all_button.setText(tr("Сбросить все"))
         self.run_button.setText(tr("Проверить"))
         self.cancel_button.setText(tr("Прервать"))
         self.export_button.setText(tr("Экспорт"))

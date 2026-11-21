@@ -903,6 +903,9 @@ EN_TRANSLATIONS = {
     "Не открыт проект QGIS": "No QGIS project is open",
     "Нет доступа к карте QGIS": "No access to the QGIS map canvas",
 
+    "Выбрать все": "Select all",
+    "Сбросить все": "Clear all",
+
     # Качество по НСИ
     "Качество по НСИ": "Reference data quality",
     "Соединение": "Connection",
