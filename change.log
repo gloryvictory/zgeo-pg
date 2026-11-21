@@ -3,6 +3,28 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.38.0] - 2026-11-18
+
+### Added
+
+- The right-click menu of a spatial check cell offers "Загрузить в текущий
+  проект и выделить проблемные объекты": the layer is filtered by that check
+  and every problem feature is selected, so the map shows exactly what the
+  check found.
+- \`quality.build_filter()\` derives the WHERE clause from the check SQL; checks
+  that group or join the table carry an explicit \`filter_sql\`
+  (\`duplicate_geometry\`, \`polygon_overlaps\`, \`near_duplicate_geometry\`,
+  \`polygon_slivers\`), with a geographic variant for the two threshold checks.
+
+### Fixed
+
+- A layer was matched by \`publicSource()\`, which changes after
+  \`setSubsetString()\`, so the table was added to the project a second time.
+  \`find_layer()\` compares the connection, schema, table and geometry column.
+- A plain load now clears a subset and a selection left by a previous check.
+- The sliver filter skips invalid geometries: \`ST_Intersection\` failed with a
+  GEOS topology error on them.
+
 ## [0.37.0] - 2026-11-18
 
 ### Added

@@ -73,6 +73,7 @@ from .nsi import (
 )
 from .quality import (
     ATTRIBUTE_CHECKS,
+    build_filter,
     row_key,
     THRESHOLD_DEFAULTS,
     QUALITY_CHECKS,
@@ -618,7 +619,11 @@ class QualityTabPage(QWidget):
         return self._table_of.get(row)
 
     def _on_table_context_menu(self, position) -> None:
-        """Меню по правой кнопке: загрузить таблицу строки в проект QGIS."""
+        """Меню по правой кнопке: загрузить таблицу строки в проект QGIS.
+
+        Если нажали на ячейку проверки, на слое остаются и выделяются только
+        объекты с этой проблемой.
+        """
 
         item = self.table.itemAt(position)
         if item is None:
@@ -627,17 +632,43 @@ class QualityTabPage(QWidget):
         table = self._table_for_row(row)
         if table is None:
             return
+        column = item.column()
+        check_key = self._columns[column - 2] if column >= 2 else ""
+        check = check_by_key(check_key) if check_key else None
+
+        # Условие считаем до меню: по нему видно, сможет ли пункт оставить на
+        # карте только проблемные объекты, или слой грузится целиком.
+        where = ""
+        note = ""
+        if check is not None:
+            try:
+                where = build_filter(check, table) or ""
+            except Exception as error:  # noqa: BLE001
+                note = str(error)
+            if not where and not note:
+                note = tr("Проверка не выделяет объекты на карте")
+
         menu = QMenu(self)
-        action = menu.addAction(
-            tr("Загрузить в текущий проект и показать на карте")
-        )
-        action.setToolTip(table.full_name)
+        if where:
+            action = menu.addAction(
+                tr("Загрузить в текущий проект и выделить проблемные объекты")
+            )
+            action.setToolTip(table.full_name + " — " + tr(check.title))
+        else:
+            action = menu.addAction(
+                tr("Загрузить в текущий проект и показать на карте")
+            )
+            action.setToolTip(table.full_name)
         chosen = menu.exec(self.table.viewport().mapToGlobal(position))
         if chosen is action:
-            self._load_layer(table)
+            self._load_layer(table, where, note)
 
-    def _load_layer(self, table) -> None:
-        """Добавить слой таблицы в проект QGIS и показать его на карте."""
+    def _load_layer(self, table, where: str = "", note: str = "") -> None:
+        """Добавить слой таблицы в проект QGIS и показать его на карте.
+
+        Если задано условие проверки, на слое остаются только проблемные
+        объекты, и они выделяются.
+        """
 
         host = self._host
         if host._conn is None:
@@ -645,10 +676,11 @@ class QualityTabPage(QWidget):
                 self, "ZGeo-PG", tr("Сначала подключитесь к базе данных")
             )
             return
+
         try:
             from .layer_loader import load_table_layer
 
-            message = load_table_layer(None, host._conn, table)
+            message = load_table_layer(None, host._conn, table, where)
         except Exception as error:  # noqa: BLE001
             QMessageBox.critical(
                 self,
@@ -657,8 +689,9 @@ class QualityTabPage(QWidget):
             )
             host._set_status(tr("Ошибка") + ": " + str(error))
             return
+        if note:
+            message += " — " + note
         host._set_status(message)
-
 
     def _on_cell_double_clicked(self, row: int, column: int) -> None:
         """Показать подробный список дублей по двойному щелчку."""

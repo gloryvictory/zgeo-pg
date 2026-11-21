@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
 
@@ -99,6 +100,12 @@ class QualityCheck:
     only_geographic: bool = False
     # Тяжёлые проверки (self-join по таблице) по умолчанию выключены.
     enabled_by_default: bool = True
+    # WHERE-условие для выбора проблемных объектов на слое QGIS. Задаётся
+    # только там, где условие нельзя взять из sql (группировки и self-join);
+    # для остальных проверок оно выводится из sql автоматически.
+    filter_sql: Optional[str] = None
+    # Вариант условия для географических данных (пороги в метрах).
+    filter_sql_geographic: Optional[str] = None
 
 
 QUALITY_CHECKS: List[QualityCheck] = [
@@ -164,6 +171,12 @@ QUALITY_CHECKS: List[QualityCheck] = [
             "  WHERE {geom} IS NOT NULL\n"
             "  GROUP BY ST_AsEWKB({geom}) HAVING count(*) > 1\n"
             ") AS duplicates"
+        ),
+        filter_sql=(
+            "NOT ST_IsEmpty({geom}) AND ST_AsEWKB({geom}) IN (\n"
+            "  SELECT ST_AsEWKB({geom_col}) FROM {table}\n"
+            "  WHERE {geom_col} IS NOT NULL\n"
+            "  GROUP BY 1 HAVING count(*) > 1)"
         ),
     ),
     QualityCheck(
@@ -972,6 +985,11 @@ QUALITY_CHECKS: List[QualityCheck] = [
             "  AND ST_Overlaps(a.{geom_col}, b.{geom_col})"
         ),
         enabled_by_default=False,
+        filter_sql=(
+            "EXISTS (SELECT 1 FROM {table} b\n"
+            "  WHERE b.{geom_col} && {geom}\n"
+            "    AND ST_Overlaps(b.{geom_col}, {geom}))"
+        ),
     ),
     QualityCheck(
         key="near_duplicate_geometry",
@@ -1007,6 +1025,19 @@ QUALITY_CHECKS: List[QualityCheck] = [
             "{overlap_tolerance_geographic})"
         ),
         enabled_by_default=False,
+        filter_sql=(
+            "EXISTS (SELECT 1 FROM {table} b\n"
+            "  WHERE b.{geom_col} && {geom}\n"
+            "    AND NOT ST_Equals(b.{geom_col}, {geom})\n"
+            "    AND ST_DWithin(b.{geom_col}, {geom}, {overlap_tolerance}))"
+        ),
+        filter_sql_geographic=(
+            "EXISTS (SELECT 1 FROM {table} b\n"
+            "  WHERE b.{geom_col} && {geom}\n"
+            "    AND NOT ST_Equals(b.{geom_col}, {geom})\n"
+            "    AND ST_DWithin(b.{geom_col}::geography, {geom}::geography, "
+            "{overlap_tolerance_geographic}))"
+        ),
     ),
     QualityCheck(
         key="polygon_slivers",
@@ -1048,6 +1079,25 @@ QUALITY_CHECKS: List[QualityCheck] = [
             "< {sliver_area_geographic}"
         ),
         enabled_by_default=False,
+        filter_sql=(
+            "EXISTS (SELECT 1 FROM {table} b\n"
+            "  WHERE b.{geom_col} && {geom}\n"
+            "    AND ST_IsValid(b.{geom_col}) AND ST_IsValid({geom})\n"
+            "    AND ST_Intersects(b.{geom_col}, {geom})\n"
+            "    AND ST_Area(ST_Intersection(b.{geom_col}, {geom})) > 0\n"
+            "    AND ST_Area(ST_Intersection(b.{geom_col}, {geom})) < "
+            "{sliver_area})"
+        ),
+        filter_sql_geographic=(
+            "EXISTS (SELECT 1 FROM {table} b\n"
+            "  WHERE b.{geom_col} && {geom}\n"
+            "    AND ST_IsValid(b.{geom_col}) AND ST_IsValid({geom})\n"
+            "    AND ST_Intersects(b.{geom_col}, {geom})\n"
+            "    AND ST_Area(ST_Intersection(b.{geom_col}, {geom})::geography) "
+            "> 0\n"
+            "    AND ST_Area(ST_Intersection(b.{geom_col}, {geom})::geography) "
+            "< {sliver_area_geographic})"
+        ),
     ),
 ]
 
@@ -1403,6 +1453,74 @@ def build_sql(
             thresholds.get("sliver_area_geographic", 100.0)
         ),
     )
+
+
+def build_filter(
+    check: QualityCheck,
+    table: SpatialTable,
+    thresholds: Optional[dict] = None,
+) -> Optional[str]:
+    """Собрать WHERE-условие проверки для выделения объектов на слое QGIS.
+
+    Возвращает None, если проверка не даёт отобрать конкретные объекты
+    (проблема в самой таблице, а не в строках).
+
+    Raises:
+        RuntimeError: если для проверки не удалось построить условие.
+    """
+
+    if check.key == CHECK_MISSING_INDEX:
+        return None
+
+    template = check.filter_sql
+    if template and check.filter_sql_geographic and table.srid == 4326:
+        template = check.filter_sql_geographic
+    if template:
+        sql = build_sql(check, table, thresholds)
+        if sql is None:
+            return None
+        if thresholds is None:
+            thresholds = load_thresholds()
+        geom = quote_ident(table.geom_column or "geom") + "::geometry"
+        return template.format(
+            table=table.qualified,
+            geom=geom,
+            geom_col=quote_ident(table.geom_column or "geom"),
+            type=(table.geom_type or "").upper(),
+            srid=int(table.srid or 0),
+            max_points=int(thresholds.get("max_points", 10000)),
+            min_area=float(thresholds.get("min_area", 1.0)),
+            min_area_geographic=float(thresholds.get("min_area_geographic", 1.0)),
+            min_length=float(thresholds.get("min_length", 1.0)),
+            min_length_geographic=float(
+                thresholds.get("min_length_geographic", 1.0)
+            ),
+            max_parts=int(thresholds.get("max_parts", 1000)),
+            max_bytes=int(thresholds.get("max_bytes", 1000000)),
+            overlap_tolerance=float(thresholds.get("overlap_tolerance", 1.0)),
+            overlap_tolerance_geographic=float(
+                thresholds.get("overlap_tolerance_geographic", 1.0)
+            ),
+            sliver_area=float(thresholds.get("sliver_area", 1.0)),
+            sliver_area_geographic=float(
+                thresholds.get("sliver_area_geographic", 100.0)
+            ),
+        )
+
+    if check.from_catalog:
+        return None
+
+    sql = build_sql(check, table, thresholds)
+    if sql is None:
+        return None
+    match = re.search(r"(?is)\bWHERE\b\s+(.+)$", sql)
+    if match is None:
+        # Проверка считает по группировке или соединению таблицы с самой
+        # собой — выделить объекты по её запросу нельзя.
+        raise RuntimeError(
+            tr("Проверка не выделяет объекты на карте") + ": " + tr(check.title)
+        )
+    return match.group(1).strip()
 
 
 def run_check(

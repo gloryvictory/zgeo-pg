@@ -885,6 +885,17 @@ EN_TRANSLATIONS = {
     "Загрузить в текущий проект и показать на карте": (
         "Load into the current project and show on the map"
     ),
+    "Загрузить в текущий проект и выделить проблемные объекты": (
+        "Load into the current project and select the problem features"
+    ),
+    "Проверка не выделяет объекты на карте": (
+        "The check does not select features on the map"
+    ),
+    "Условие проверки не подходит к слою": (
+        "The check condition does not fit the layer"
+    ),
+    "не удалось выделить объекты": "failed to select features",
+    "выделено объектов: {}": "features selected: {}",
     "Не удалось загрузить слой": "Failed to load the layer",
     "Слой уже в проекте": "The layer is already in the project",
     "Слой добавлен на карту": "The layer was added to the map",
