@@ -3,6 +3,15 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.43.0] - 2026-11-18
+
+### Added
+
+- Tooltips on every label and input of the thresholds dialog: what the number
+  means, which units it uses (layer CRS or metres/square metres for SRID 4326)
+  and which check applies it, plus the default value.
+- The tooltips follow the interface language like the rest of the dialog.
+
 ## [0.42.0] - 2026-11-18
 
 ### Changed

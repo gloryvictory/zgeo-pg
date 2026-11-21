@@ -909,6 +909,46 @@ EN_TRANSLATIONS = {
     "Вернуть выбор по умолчанию": "Restore the default selection",
     "Выбрано {}/{}": "Selected {}/{}",
 
+    "Объект с числом вершин больше этого значения считается тяжёлым: карта рисуется медленно, выборки и экспорт тормозят. Проверка «Слишком много вершин». По умолчанию 10 000.": (
+        "A feature with more vertices than this is considered heavy: the map draws slowly and selections and exports lag. Check \"Too many vertices\". 10 000 by default."
+    ),
+    "Полигоны с площадью меньше этого значения считаются осколками после наложения и обрезки слоёв. Единицы — единицы системы координат слоя (для метровых СК это квадратные метры). Проверка «Микрообъекты».": (
+        "Polygons with an area below this value count as splinters left after overlaying and clipping layers. The unit is the unit of the layer CRS (square metres for metre-based systems). Check \"Tiny polygons\"."
+    ),
+    "То же для слоёв в SRID 4326: площадь считается через ST_Area(geography), поэтому порог задаётся в квадратных метрах и не зависит от градусов. Проверка «Микрообъекты».": (
+        "The same for SRID 4326 layers: the area is measured with ST_Area(geography), so the threshold is set in square metres and does not depend on degrees. Check \"Tiny polygons\"."
+    ),
+    "Линии короче этого значения считаются обрезками и на карте выглядят точками. Единицы — единицы системы координат слоя. Проверка «Микролинии».": (
+        "Lines shorter than this value count as clippings and look like points on the map. The unit is the unit of the layer CRS. Check \"Tiny lines\"."
+    ),
+    "То же для слоёв в SRID 4326: длина считается через ST_Length(geography), порог задаётся в метрах. Проверка «Микролинии».": (
+        "The same for SRID 4326 layers: the length is measured with ST_Length(geography), so the threshold is set in metres. Check \"Tiny lines\"."
+    ),
+    "Объекты, расстояние между которыми меньше этого допуска, считаются почти дублями: загружены дважды со сдвигом или оцифрованы повторно. Единицы — единицы системы координат слоя. Проверка «Почти дубли геометрий».": (
+        "Features whose distance is below this tolerance count as near duplicates: loaded twice with a shift or digitised again. The unit is the unit of the layer CRS. Check \"Near-duplicate geometries\"."
+    ),
+    "То же для слоёв в SRID 4326: расстояние считается в метрах, поэтому допуск задаётся в метрах. Проверка «Почти дубли геометрий».": (
+        "The same for SRID 4326 layers: the distance is measured in metres, so the tolerance is set in metres. Check \"Near-duplicate geometries\"."
+    ),
+    "Наложение соседних полигонов меньше этого значения считается сливером — узкой щелью на месте общей границы. Единицы — единицы площади системы координат слоя. Проверка «Сливеры (узкие щели)».": (
+        "An overlap of neighbouring polygons below this value counts as a sliver, a narrow gap in place of the shared border. The unit is the area unit of the layer CRS. Check \"Slivers (narrow gaps)\"."
+    ),
+    "То же для слоёв в SRID 4326: площадь наложения считается в квадратных метрах. Значение по умолчанию 100 м², потому что в градусах тонкая щель даёт тысячи квадратных метров. Проверка «Сливеры (узкие щели)».": (
+        "The same for SRID 4326 layers: the overlap area is measured in square metres. The default is 100 m², because in degrees a thin gap easily reaches thousands of square metres. Check \"Slivers (narrow gaps)\"."
+    ),
+    "Объект с числом частей больше этого значения (мультиполигон из тысяч кусков) тяжело рисуется и блокирует таблицу при правке. Проверка «Слишком много частей в объекте». По умолчанию 1000.": (
+        "A feature with more parts than this (a multipolygon of thousands of pieces) draws slowly and locks the table when edited. Check \"Too many parts per feature\". 1000 by default."
+    ),
+    "Геометрия крупнее этого размера в байтах читается целиком при каждом обращении, из-за чего карта и проверки замедляются. Проверка «Очень крупная геометрия». По умолчанию 1 000 000 байт.": (
+        "A geometry larger than this size in bytes is read entirely on every access, which slows the map and the checks down. Check \"Very large geometry\". 1 000 000 bytes by default."
+    ),
+    "Если ANALYZE не запускался дольше этого числа дней, планировщик оценивает строки по устаревшим данным и читает таблицу целиком. Проверка «Устаревшая статистика таблицы». По умолчанию 30 дней.": (
+        "If ANALYZE has not run for longer than this number of days, the planner estimates rows from outdated data and reads the whole table. Check \"Stale table statistics\". 30 days by default."
+    ),
+    "Если мёртвых строк больше этого процента от числа живых, таблица занимает лишнее место и читается медленнее. Проверка «Раздувание таблицы». По умолчанию 20 %.": (
+        "If dead rows exceed this share of the live rows, the table takes extra space and reads more slowly. Check \"Table bloat\". 20 % by default."
+    ),
+
     # Качество по НСИ
     "Качество по НСИ": "Reference data quality",
     "Соединение": "Connection",

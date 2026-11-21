@@ -4,7 +4,7 @@
 
 QGIS plugin for viewing spatial data stored in a PostgreSQL / PostGIS database.
 
-Plugin version: **0.42.0**  
+Plugin version: **0.43.0**  
 Release history: [change.log](change.log)
 
 The plugin adds a **"ZGeo-PG"** toolbar panel in QGIS with a **"ZGeo-PG Catalog"** button that opens a floating panel. In the panel:
@@ -37,7 +37,7 @@ The plugin adds a **"ZGeo-PG"** toolbar panel in QGIS with a **"ZGeo-PG Catalog"
 - both sides of the reference data tab see the connection the panel is using even when it was never saved, and refresh the list on connect, save and delete; an unreachable database reports an error and the tab keeps working;
 - the check lists on the "Geospatial data quality" and "Attribute data quality" tabs scroll, so every check stays reachable in a short panel, and the "Select all", "Clear all" and "Defaults" buttons below the list tick every check, untick every check or restore the default selection, with a "Selected 34/37" counter to their right;
 - on the spatial checks tab the right-click menu of a results cell offers "Load into the current project and select the problem features": the table of that row is added to the QGIS project as a PostGIS layer, the layer is filtered by the selected check, the found features are selected and the map zooms to them; clicking a schema or table cell just loads the whole layer;
-- a "Thresholds" button on the spatial checks tab sets the maximum vertices, the minimum polygon area (planar and in m²), the minimum line length (planar and in metres), the tolerance for near duplicates and the maximum sliver area (planar and in metres/m²), the maximum parts, the maximum geometry size and the statistics staleness; the values are stored in the QGIS settings;
+- a "Thresholds" button on the spatial checks tab sets the maximum vertices, the minimum polygon area (planar and in m²), the minimum line length (planar and in metres), the tolerance for near duplicates and the maximum sliver area (planar and in metres/m²), the maximum parts, the maximum geometry size and the statistics staleness; the values are stored in the QGIS settings, and a tooltip on every label and input explains what the number means, its units and the check that uses it;
 - check titles, summaries, full descriptions and fix hints are translated into English and follow the interface language, including already rendered results and an open description.
 
 ## Screenshots
@@ -117,7 +117,7 @@ Build the archive:
 powershell -ExecutionPolicy Bypass -File .\scripts\build_zip.ps1
 ```
 
-The ready file will appear in `dist\zgeo-pg-0.42.0.zip`. Only the latest build is kept in `dist`. The script first closes a running QGIS Desktop (it keeps the plugin files locked, so the copy fails otherwise), installs the build into the QGIS Desktop 4.x profile (`%APPDATA%\QGIS\QGIS4\profiles\<profile>\python\plugins\zgeo-pg`) and starts QGIS again. Pass `-SkipQGISInstall` to only build the archive, and `-NoRestart` to leave QGIS closed.
+The ready file will appear in `dist\zgeo-pg-0.43.0.zip`. Only the latest build is kept in `dist`. The script first closes a running QGIS Desktop (it keeps the plugin files locked, so the copy fails otherwise), installs the build into the QGIS Desktop 4.x profile (`%APPDATA%\QGIS\QGIS4\profiles\<profile>\python\plugins\zgeo-pg`) and starts QGIS again. Pass `-SkipQGISInstall` to only build the archive, and `-NoRestart` to leave QGIS closed.
 
 Or install it manually. In QGIS open:
 
