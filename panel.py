@@ -14,6 +14,7 @@ from qgis.PyQt.QtWidgets import (
     QComboBox,
     QDialog,
     QDockWidget,
+    QFrame,
     QGridLayout,
     QListWidget,
     QGroupBox,
@@ -22,10 +23,10 @@ from qgis.PyQt.QtWidgets import (
     QLabel,
     QLineEdit,
     QMenu,
-    QMenu,
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QSplitter,
     QStatusBar,
@@ -327,8 +328,21 @@ class QualityTabPage(QWidget):
 
         checks_box = QGroupBox()
         self.checks_box = checks_box
-        checks_layout = QVBoxLayout(checks_box)
-        checks_layout.setContentsMargins(6, 6, 6, 6)
+        box_layout = QVBoxLayout(checks_box)
+        box_layout.setContentsMargins(6, 6, 6, 6)
+
+        # Список проверок прокручивается: на вкладке их больше тридцати и они
+        # не помещаются в высоту панели.
+        self.checks_area = QScrollArea()
+        self.checks_area.setWidgetResizable(True)
+        self.checks_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.checks_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        checks_content = QWidget()
+        checks_layout = QVBoxLayout(checks_content)
+        checks_layout.setContentsMargins(0, 0, 0, 0)
+        checks_layout.setSpacing(2)
         for check in self._checks:
             row = QHBoxLayout()
             box = QCheckBox()
@@ -344,6 +358,9 @@ class QualityTabPage(QWidget):
             row.addWidget(info)
             checks_layout.addLayout(row)
         checks_layout.addStretch(1)
+        self.checks_area.setWidget(checks_content)
+        box_layout.addWidget(self.checks_area)
+        checks_box.setMinimumWidth(260)
         splitter.addWidget(checks_box)
 
         self._help = QTextBrowser()

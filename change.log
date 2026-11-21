@@ -3,6 +3,16 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.35.0] - 2026-11-18
+
+### Changed
+
+- The check lists of both quality tabs sit inside a QScrollArea, so all 31
+  spatial and 11 attribute checks stay reachable in a short panel instead of
+  being squeezed into the available height.
+- The check column keeps a minimum width and the horizontal scrollbar is off,
+  so long check titles wrap into the panel instead of adding a second bar.
+
 ## [0.34.0] - 2026-11-18
 
 ### Added
