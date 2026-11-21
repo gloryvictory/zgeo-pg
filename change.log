@@ -3,6 +3,16 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.47.0] - 2026-11-18
+
+### Changed
+
+- The plugin is presented as "Контроль качества пространственных данных"
+  instead of "Каталог пространственных данных" everywhere: the panel title,
+  the toolbar action tooltip and status tip, the export footers, the module
+  docstrings and the `description`/`about` fields of `metadata.txt`.
+- The English wording follows: "spatial data quality control".
+
 ## [0.46.0] - 2026-11-18
 
 ### Added

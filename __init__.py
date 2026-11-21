@@ -1,4 +1,4 @@
-"""ZGeo-PG — каталог пространственных данных из базы PostgreSQL / PostGIS для QGIS."""
+"""ZGeo-PG — контроль качества пространственных данных из базы PostgreSQL / PostGIS для QGIS."""
 
 
 def classFactory(iface):

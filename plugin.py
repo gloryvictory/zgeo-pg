@@ -50,7 +50,7 @@ class ZGeoPgPlugin:
         self.action.setObjectName("ZGeoPgAction")
         self.action.setCheckable(True)
         self.action.setToolTip(
-            tr("ZGeo-PG-Каталог — каталог пространственных данных PostGIS")
+            tr("ZGeo-PG-Каталог — контроль качества пространственных данных PostGIS")
         )
         self.action.setStatusTip(
             tr("Открыть плавающую панель ZGeo-PG-Каталог")
@@ -194,7 +194,7 @@ class ZGeoPgPlugin:
             return
         self.action.setText(tr("ZGeo-PG-Каталог"))
         self.action.setToolTip(
-            tr("ZGeo-PG-Каталог — каталог пространственных данных PostGIS")
+            tr("ZGeo-PG-Каталог — контроль качества пространственных данных PostGIS")
         )
         self.action.setStatusTip(
             tr("Открыть плавающую панель ZGeo-PG-Каталог")

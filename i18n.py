@@ -1036,14 +1036,14 @@ EN_TRANSLATIONS = {
 
     # Плагин и панель
     "ZGeo-PG-Каталог": "ZGeo-PG Catalog",
-    "ZGeo-PG-Каталог — каталог пространственных данных PostGIS": (
-        "ZGeo-PG Catalog — PostGIS spatial data catalog"
+    "ZGeo-PG-Каталог — контроль качества пространственных данных PostGIS": (
+        "ZGeo-PG Catalog — PostGIS spatial data quality control"
     ),
     "Открыть плавающую панель ZGeo-PG-Каталог": (
         "Open the ZGeo-PG Catalog dock"
     ),
-    "ZGeo-PG — каталог пространственных данных PostGIS": (
-        "ZGeo-PG — PostGIS spatial data catalog"
+    "ZGeo-PG — контроль качества пространственных данных PostGIS": (
+        "ZGeo-PG — PostGIS spatial data quality control"
     ),
 }
 

@@ -1659,7 +1659,7 @@ class NsiTabPage(QWidget):
 
 
 class ZGeoPgPanel(QDockWidget):
-    """Плавающая панель каталога пространственных данных PostGIS."""
+    """Плавающая панель контроля качества пространственных данных PostGIS."""
 
     language_changed = pyqtSignal(str)
 
@@ -2099,7 +2099,9 @@ class ZGeoPgPanel(QDockWidget):
     def _retranslate(self) -> None:
         self.setWindowTitle(self._window_title())
         self._title_label.setText(
-            tr("ZGeo-PG — каталог пространственных данных PostGIS") + "  v" + get_plugin_version()
+            tr("ZGeo-PG — контроль качества пространственных данных PostGIS")
+            + "  v"
+            + get_plugin_version()
         )
         self._lang_button.setText("RU" if get_language() == LANGUAGE_EN else "EN")
         self._tabs.setTabText(self._tabs.indexOf(self._connection_page), tr("Подключения"))

@@ -116,7 +116,7 @@ def export_rows_with_dialog(
                 rows,
                 title=sheet_name,
                 total_index=total_index,
-                footer=tr("ZGeo-PG — каталог пространственных данных PostGIS"),
+                footer=tr("ZGeo-PG — контроль качества пространственных данных PostGIS"),
             )
         else:
             sheets: list = [(sheet_name, headers, rows)]
@@ -186,7 +186,7 @@ def export_sections_with_dialog(
                 path,
                 prepared,
                 title=title,
-                footer=tr("ZGeo-PG — каталог пространственных данных PostGIS"),
+                footer=tr("ZGeo-PG — контроль качества пространственных данных PostGIS"),
             )
         else:
             write_xlsx_sheets(path, prepared)
@@ -258,7 +258,7 @@ def export_report_with_dialog(
                 list(info),
                 list(stats),
                 prepared,
-                footer=tr("ZGeo-PG — каталог пространственных данных PostGIS"),
+                footer=tr("ZGeo-PG — контроль качества пространственных данных PostGIS"),
             )
         else:
             sheets: list = []
