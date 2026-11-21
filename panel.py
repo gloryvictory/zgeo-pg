@@ -1921,6 +1921,13 @@ class ZGeoPgPanel(QDockWidget):
         self._history_summary = QLabel()
         layout.addWidget(self._history_summary)
 
+        history_bar = QHBoxLayout()
+        history_bar.addStretch(1)
+        self._history_export_button = QPushButton()
+        self._history_export_button.clicked.connect(self._on_history_export)
+        history_bar.addWidget(self._history_export_button)
+        layout.addLayout(history_bar)
+
         self._stats_kind_combo.currentIndexChanged.connect(
             self._on_history_kind_changed
         )
@@ -2137,7 +2144,9 @@ class ZGeoPgPanel(QDockWidget):
         self._cancel_button.setText(tr("Отмена"))
         self._search_edit.setPlaceholderText(tr("Поиск"))
         self._only_geometry_check.setText(tr("Только с геометрией"))
-        self._stats_export_button.setText(tr("Экспорт в Excel"))
+        self._stats_export_button.setText(tr("Экспорт"))
+        self._history_export_button.setText(tr("Экспорт"))
+        self._history_export_button.setToolTip(tr("Экспорт истории проверок"))
         self._create_all_indexes_button.setText(
             tr("Создать все пространственные индексы")
         )
@@ -2726,6 +2735,51 @@ class ZGeoPgPanel(QDockWidget):
             return
         self._fill_history_checks()
         self._reload_history()
+
+    def _on_history_export(self) -> None:
+        """Экспорт таблицы истории проверок в Excel или HTML."""
+
+        if self._history_table.rowCount() == 0:
+            QMessageBox.information(
+                self, "ZGeo-PG", tr("История проверок пуста")
+            )
+            return
+        export_format = ask_export_format(self, self._history_export_button)
+        if export_format is None:
+            return
+
+        headers = [
+            self._history_table.horizontalHeaderItem(column).text()
+            if self._history_table.horizontalHeaderItem(column) is not None
+            else ""
+            for column in range(self._history_table.columnCount())
+        ]
+        rows: List[List[object]] = []
+        for row in range(self._history_table.rowCount()):
+            values: List[object] = []
+            for column in range(self._history_table.columnCount()):
+                item = self._history_table.item(row, column)
+                if item is None:
+                    values.append("")
+                    continue
+                raw = item.data(Qt.ItemDataRole.UserRole)
+                values.append(raw if isinstance(raw, int) else item.text())
+            rows.append(values)
+
+        suffix = "html" if export_format == FORMAT_HTML else "xlsx"
+        sheet = (
+            tr("Было/стало")
+            if self._stats_compare_button.isChecked()
+            else tr("Проверки")
+        )
+        export_rows_with_dialog(
+            self,
+            headers,
+            rows,
+            "zgeo-pg_checks." + suffix,
+            sheet,
+            export_format=export_format,
+        )
 
     def _save_check_history(self, page, rows, run_id: str = "") -> None:
         """Сохранить результаты прогона проверок в SQLite.

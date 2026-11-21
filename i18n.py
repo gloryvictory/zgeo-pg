@@ -933,6 +933,7 @@ EN_TRANSLATIONS = {
     "Записей в истории: {}": "Records in history: {}",
     "прогонов на графике: {}": "runs on the chart: {}",
     "История проверок пуста": "The check history is empty",
+    "Экспорт истории проверок": "Export the check history",
 
     "Выбрать все": "Select all",
     "Сбросить все": "Clear all",

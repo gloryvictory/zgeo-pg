@@ -3,6 +3,19 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.46.0] - 2026-11-18
+
+### Added
+
+- An "Экспорт" button on the "Проверки" sub-tab that writes the visible history
+  table to Excel or HTML; in the "Было/стало" mode it exports the comparison
+  table with the same four columns.
+
+### Changed
+
+- The statistics export button is renamed from "Экспорт в Excel" to "Экспорт"
+  and offers both formats through the same menu as the other tabs.
+
 ## [0.45.0] - 2026-11-18
 
 ### Added
