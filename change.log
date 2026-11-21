@@ -3,6 +3,15 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.40.0] - 2026-11-18
+
+### Added
+
+- "По умолчанию" button on both quality tabs: it restores the selection the
+  tab opens with, so the heavy checks are off again and the rest are on.
+- A counter to the right of the buttons, "Выбрано 1/13", that follows every
+  toggle, "Выбрать все", "Сбросить все" and the defaults button.
+
 ## [0.39.0] - 2026-11-18
 
 ### Added

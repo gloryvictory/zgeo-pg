@@ -905,6 +905,9 @@ EN_TRANSLATIONS = {
 
     "Выбрать все": "Select all",
     "Сбросить все": "Clear all",
+    "По умолчанию": "Defaults",
+    "Вернуть выбор по умолчанию": "Restore the default selection",
+    "Выбрано {}/{}": "Selected {}/{}",
 
     # Качество по НСИ
     "Качество по НСИ": "Reference data quality",

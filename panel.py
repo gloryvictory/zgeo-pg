@@ -27,6 +27,7 @@ from qgis.PyQt.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSpinBox,
     QSplitter,
     QStatusBar,
@@ -356,6 +357,7 @@ class QualityTabPage(QWidget):
             box = QCheckBox()
             # Долгие проверки по умолчанию выключены (см. enabled_by_default).
             box.setChecked(getattr(check, "enabled_by_default", True))
+            box.toggled.connect(self._update_selected_label)
             self._boxes[check.key] = box
             row.addWidget(box, 1)
             info = QPushButton("i")
@@ -378,8 +380,28 @@ class QualityTabPage(QWidget):
         self.clear_all_button = QPushButton()
         self.clear_all_button.clicked.connect(self._clear_all)
         select_row.addWidget(self.clear_all_button)
+        self.default_button = QPushButton()
+        self.default_button.clicked.connect(self._select_default)
+        select_row.addWidget(self.default_button)
+        # Кнопки по ширине текста, свободное место уходит в промежуток, чтобы
+        # счётчик стоял у правого края.
+        for button in (
+            self.select_all_button,
+            self.clear_all_button,
+            self.default_button,
+        ):
+            button.setSizePolicy(
+                QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed
+            )
         select_row.addStretch(1)
+        # Счётчик выбранных проверок у правого края строки кнопок.
+        self.selected_label = QLabel()
+        self.selected_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        select_row.addWidget(self.selected_label)
         box_layout.addLayout(select_row)
+        self._update_selected_label()
 
         checks_box.setMinimumWidth(260)
         splitter.addWidget(checks_box)
@@ -442,12 +464,30 @@ class QualityTabPage(QWidget):
 
         for box in self._boxes.values():
             box.setChecked(True)
+        self._update_selected_label()
 
     def _clear_all(self) -> None:
         """Снять все галочки проверок вкладки."""
 
         for box in self._boxes.values():
             box.setChecked(False)
+        self._update_selected_label()
+
+    def _select_default(self) -> None:
+        """Вернуть выбор по умолчанию: как при открытии вкладки."""
+
+        for check in self._checks:
+            box = self._boxes[check.key]
+            box.setChecked(getattr(check, "enabled_by_default", True))
+        self._update_selected_label()
+
+    def _update_selected_label(self) -> None:
+        """Показать, сколько проверок отмечено из общего числа."""
+
+        checked = sum(1 for box in self._boxes.values() if box.isChecked())
+        self.selected_label.setText(
+            tr("Выбрано {}/{}").format(checked, len(self._boxes))
+        )
 
     def retranslate(self) -> None:
         """Обновить все подписи вкладки при смене языка."""
@@ -455,6 +495,9 @@ class QualityTabPage(QWidget):
         self.checks_box.setTitle(tr("Проверки"))
         self.select_all_button.setText(tr("Выбрать все"))
         self.clear_all_button.setText(tr("Сбросить все"))
+        self.default_button.setText(tr("По умолчанию"))
+        self.default_button.setToolTip(tr("Вернуть выбор по умолчанию"))
+        self._update_selected_label()
         self.run_button.setText(tr("Проверить"))
         self.cancel_button.setText(tr("Прервать"))
         self.export_button.setText(tr("Экспорт"))
