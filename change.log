@@ -3,6 +3,14 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.49.0] - 2026-11-18
+
+### Changed
+
+- Removed the deprecated `supportsQt6` flag from `metadata.txt`: QGIS ignores it
+  now and takes Qt 6 / QGIS 4 compatibility from `qgisMaximumVersion`, which is
+  already 4.99.
+
 ## [0.48.0] - 2026-11-18
 
 ### Fixed

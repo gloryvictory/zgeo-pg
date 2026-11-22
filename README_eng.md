@@ -4,7 +4,7 @@
 
 QGIS plugin for quality control of spatial data stored in a PostgreSQL / PostGIS database.
 
-Plugin version: **0.48.0**  
+Plugin version: **0.49.0**  
 Release history: [change.log](change.log)
 
 The plugin adds a **"ZGeo-PG"** toolbar panel in QGIS with a **"ZGeo-PG Catalog"** button that opens a floating panel. In the panel:
@@ -119,7 +119,7 @@ Build the archive:
 powershell -ExecutionPolicy Bypass -File .\scripts\build_zip.ps1
 ```
 
-The ready file will appear in `dist\zgeo-pg-0.48.0.zip`. Only the latest build is kept in `dist`.
+The ready file will appear in `dist\zgeo-pg-0.49.0.zip`. Only the latest build is kept in `dist`.
 
 The top-level folder inside the archive is `zgeo_pg`: QGIS imports it as a Python module, so the name must be a PEP 8 identifier and the repository name `zgeo-pg` with its hyphen does not qualify. The displayed plugin name (`ZGeo-PG`) comes from `metadata.txt` and stays unchanged.
 
