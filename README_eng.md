@@ -4,7 +4,7 @@
 
 QGIS plugin for quality control of spatial data stored in a PostgreSQL / PostGIS database.
 
-Plugin version: **0.47.0**  
+Plugin version: **0.48.0**  
 Release history: [change.log](change.log)
 
 The plugin adds a **"ZGeo-PG"** toolbar panel in QGIS with a **"ZGeo-PG Catalog"** button that opens a floating panel. In the panel:
@@ -119,7 +119,11 @@ Build the archive:
 powershell -ExecutionPolicy Bypass -File .\scripts\build_zip.ps1
 ```
 
-The ready file will appear in `dist\zgeo-pg-0.47.0.zip`. Only the latest build is kept in `dist`. The script first closes a running QGIS Desktop (it keeps the plugin files locked, so the copy fails otherwise), installs the build into the QGIS Desktop 4.x profile (`%APPDATA%\QGIS\QGIS4\profiles\<profile>\python\plugins\zgeo-pg`) and starts QGIS again. Pass `-SkipQGISInstall` to only build the archive, and `-NoRestart` to leave QGIS closed.
+The ready file will appear in `dist\zgeo-pg-0.48.0.zip`. Only the latest build is kept in `dist`.
+
+The top-level folder inside the archive is `zgeo_pg`: QGIS imports it as a Python module, so the name must be a PEP 8 identifier and the repository name `zgeo-pg` with its hyphen does not qualify. The displayed plugin name (`ZGeo-PG`) comes from `metadata.txt` and stays unchanged.
+
+The script first closes a running QGIS Desktop (it keeps the plugin files locked, so the copy fails otherwise), installs the build into the QGIS Desktop 4.x profile (`%APPDATA%\QGIS\QGIS4\profiles\<profile>\python\plugins\zgeo_pg`), removes an old install in the `zgeo-pg` folder if one is left behind, and starts QGIS again. Pass `-SkipQGISInstall` to only build the archive, and `-NoRestart` to leave QGIS closed.
 
 Or install it manually. In QGIS open:
 
@@ -129,7 +133,7 @@ and select the built archive.
 
 ### Manually
 
-Copy the `zgeo-pg` folder entirely to the QGIS plugins directory:
+Copy the project folder entirely to the QGIS plugins directory, naming it `zgeo_pg`:
 
 - Windows QGIS 4: `%APPDATA%\QGIS\QGIS4\profiles\default\python\plugins\`
 - Windows QGIS 3: `%APPDATA%\QGIS\QGIS3\profiles\default\python\plugins\`

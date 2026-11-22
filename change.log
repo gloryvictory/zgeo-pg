@@ -3,6 +3,24 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.48.0] - 2026-11-18
+
+### Fixed
+
+- The archive root was named `zgeo-pg`, which is not a valid Python
+  identifier: QGIS imports the plugin folder as a package, so installing from
+  the ZIP failed. `scripts/build_zip.ps1` derives a PEP 8 name
+  (`zgeo_pg`) from the repository folder, validates it and uses it both for the
+  archive root and for the QGIS profile install.
+- An install left in the old `zgeo-pg` folder is removed, so the same plugin
+  is not loaded twice.
+- The manual install instructions name the folder `zgeo_pg`.
+
+### Notes
+
+- The displayed plugin name stays "ZGeo-PG": it comes from `metadata.txt` and
+  is independent of the package folder.
+
 ## [0.47.0] - 2026-11-18
 
 ### Changed

@@ -83,6 +83,18 @@ $ErrorActionPreference = "Stop"
 
 $pluginRoot = Split-Path -Parent $PSScriptRoot
 $pluginName = Split-Path -Leaf $pluginRoot
+
+# QGIS installs the archive by its top-level folder name and imports that folder
+# as a Python package, so the name must be a PEP 8 identifier. The repository
+# folder "zgeo-pg" contains a hyphen, therefore the archive root is "zgeo_pg".
+$packageName = $pluginName -replace "[^0-9A-Za-z_]", "_"
+if ($packageName -match "^[0-9]") {
+    $packageName = "_" + $packageName
+}
+if ($packageName -notmatch "^[A-Za-z_][0-9A-Za-z_]*$") {
+    throw "Package name is not a valid Python identifier: $packageName"
+}
+
 $metadataPath = Join-Path $pluginRoot "metadata.txt"
 
 if (-not (Test-Path -LiteralPath $metadataPath)) {
@@ -100,7 +112,7 @@ if (-not $OutputDirectory) {
 }
 
 $stagingRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("zgeo-pg-build-" + [guid]::NewGuid().ToString("N"))
-$stagingPlugin = Join-Path $stagingRoot $pluginName
+$stagingPlugin = Join-Path $stagingRoot $packageName
 
 try {
     New-Item -ItemType Directory -Path $stagingPlugin -Force | Out-Null
@@ -145,7 +157,7 @@ try {
     try {
         Get-ChildItem -LiteralPath $stagingPlugin -Recurse -File | ForEach-Object {
             $relativePath = $_.FullName.Substring($stagingPlugin.Length + 1).Replace("\", "/")
-            $entryName = "$pluginName/$relativePath"
+            $entryName = "$packageName/$relativePath"
             [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
                 $archive,
                 $_.FullName,
@@ -158,7 +170,7 @@ try {
         $archive.Dispose()
     }
 
-    Write-Host "Created: $zipPath"
+    Write-Host "Created: $zipPath (root folder: $packageName)"
 
     # Keep only the latest build in the output directory.
     Get-ChildItem -LiteralPath $OutputDirectory -Filter "$pluginName-*.zip" -File |
@@ -182,7 +194,15 @@ try {
         $closed = Stop-RunningQGIS
 
         foreach ($pluginsDirectory in $targets) {
-            $target = Join-Path $pluginsDirectory $pluginName
+            $target = Join-Path $pluginsDirectory $packageName
+            # Drop an install made under the old, non-identifier folder name.
+            if ($pluginName -ne $packageName) {
+                $stale = Join-Path $pluginsDirectory $pluginName
+                if (Test-Path -LiteralPath $stale) {
+                    Remove-Item -LiteralPath $stale -Recurse -Force
+                    Write-Host "Removed stale install: $stale"
+                }
+            }
             if (Test-Path -LiteralPath $target) {
                 Remove-Item -LiteralPath $target -Recurse -Force
             }
