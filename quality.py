@@ -16,7 +16,7 @@ from typing import List, Optional, Sequence, Tuple
 from qgis.PyQt.QtCore import QSettings, QThread, pyqtSignal
 from qgis.PyQt.QtSql import QSqlQuery
 
-from .catalog import SpatialTable, quote_ident
+from .catalog import SpatialTable, quote_ident, render_sql
 from .connection import PGConnection, close_connection, open_connection
 from .i18n import tr
 
@@ -1642,6 +1642,42 @@ def _text_columns(columns: Sequence[Tuple[str, str]]) -> List[str]:
     return [name for name, kind in columns if kind == "text"]
 
 
+# Шаблоны веток проверки дублей. В них подставляются только категория и
+# идентификаторы, прошедшие quote_ident; значения пользователя в запрос
+# попадают исключительно связанными параметрами.
+# Счётчик проблем по готовой UNION-ветке: подставляется только она сама.
+COUNT_DUPLICATES_SQL = "SELECT count(*) FROM ({union}) AS d"
+
+DUPLICATE_GROUP_SQL = (
+    "(SELECT '{category}' AS category, "
+    "concat_ws(' | ', {group})::text AS a, "
+    "'×' || count(*)::text AS b, "
+    "NULL::numeric AS percent FROM {target} GROUP BY {group} "
+    "HAVING count(*) > 1)"
+)
+
+DUPLICATE_CASE_SQL = (
+    "(SELECT '{category}' AS category, "
+    "lower(regexp_replace(btrim({column}), '\\s+', ' ', 'g'))::text AS a, "
+    "string_agg(DISTINCT {column}::text, ' | ') AS b, "
+    "NULL::numeric AS percent "
+    "FROM {target} WHERE {column} IS NOT NULL "
+    "GROUP BY 2 HAVING count(DISTINCT {column}) > 1)"
+)
+
+DUPLICATE_PARTIAL_SQL = (
+    "(SELECT DISTINCT '{category}' AS category, btrim(a.{column})::text AS a, "
+    "btrim(b.{column})::text AS b, "
+    "round(100.0 * length(btrim(a.{column})) "
+    "  / NULLIF(length(btrim(b.{column})), 0), 1) AS percent "
+    "FROM {target} a JOIN {target} b "
+    "ON position(btrim(a.{column}) IN btrim(b.{column})) > 0 "
+    "AND btrim(a.{column}) <> btrim(b.{column}) "
+    "AND length(btrim(a.{column})) >= 3 "
+    "LIMIT {limit})"
+)
+
+
 def duplicates_union_sql(
     table: SpatialTable,
     columns: Sequence[Tuple[str, str]],
@@ -1662,12 +1698,11 @@ def duplicates_union_sql(
     if quoted:
         group = ", ".join(quoted)
         parts.append(
-            "(SELECT '{full}' AS category, "
-            "concat_ws(' | ', {group})::text AS a, "
-            "'×' || count(*)::text AS b, "
-            "NULL::numeric AS percent FROM {target} GROUP BY {group} "
-            "HAVING count(*) > 1)".format(
-                full=DUPLICATE_CATEGORY_FULL, group=group, target=target
+            render_sql(
+                DUPLICATE_GROUP_SQL,
+                category=DUPLICATE_CATEGORY_FULL,
+                group=group,
+                target=target,
             )
         )
 
@@ -1675,37 +1710,27 @@ def duplicates_union_sql(
     if text:
         group = ", ".join(quote_ident(name) for name in text)
         parts.append(
-            "(SELECT '{key}' AS category, "
-            "concat_ws(' | ', {group})::text AS a, "
-            "'×' || count(*)::text AS b, "
-            "NULL::numeric AS percent FROM {target} GROUP BY {group} "
-            "HAVING count(*) > 1)".format(
-                key=DUPLICATE_CATEGORY_KEY, group=group, target=target
+            render_sql(
+                DUPLICATE_GROUP_SQL,
+                category=DUPLICATE_CATEGORY_KEY,
+                group=group,
+                target=target,
             )
         )
         for name in text:
             column = quote_ident(name)
             parts.append(
-                "(SELECT '{case}' AS category, "
-                "lower(regexp_replace(btrim({column}), '\\s+', ' ', 'g'))::text AS a, "
-                "string_agg(DISTINCT {column}::text, ' | ') AS b, "
-                "NULL::numeric AS percent "
-                "FROM {target} WHERE {column} IS NOT NULL "
-                "GROUP BY 2 HAVING count(DISTINCT {column}) > 1)".format(
-                    case=DUPLICATE_CATEGORY_CASE, column=column, target=target
+                render_sql(
+                    DUPLICATE_CASE_SQL,
+                    category=DUPLICATE_CATEGORY_CASE,
+                    column=column,
+                    target=target,
                 )
             )
             parts.append(
-                "(SELECT DISTINCT '{partial}' AS category, btrim(a.{column})::text AS a, "
-                "btrim(b.{column})::text AS b, "
-                "round(100.0 * length(btrim(a.{column})) "
-                "  / NULLIF(length(btrim(b.{column})), 0), 1) AS percent "
-                "FROM {target} a JOIN {target} b "
-                "ON position(btrim(a.{column}) IN btrim(b.{column})) > 0 "
-                "AND btrim(a.{column}) <> btrim(b.{column}) "
-                "AND length(btrim(a.{column})) >= 3 "
-                "LIMIT {limit})".format(
-                    partial=DUPLICATE_CATEGORY_PARTIAL,
+                render_sql(
+                    DUPLICATE_PARTIAL_SQL,
+                    category=DUPLICATE_CATEGORY_PARTIAL,
                     column=column,
                     target=target,
                     limit=PARTIAL_PAIR_LIMIT,
@@ -1727,10 +1752,12 @@ def duplicate_details(
     if not union:
         return []
     query = QSqlQuery(db)
-    sql = "SELECT category, a, b, percent FROM (" + union + ") AS d LIMIT {}".format(
-        int(limit)
+    sql = "SELECT category, a, b, percent FROM ({union}) AS d LIMIT ?".format(  # nosec B608 - только кавыченные идентификаторы и константы
+        union=union
     )
-    if not query.exec(sql):
+    query.prepare(sql)
+    query.addBindValue(int(limit))
+    if not query.exec():
         raise RuntimeError(query_error(query, table.full_name))
     rows: List[Tuple[str, str, str, object]] = []
     while query.next():
@@ -1771,7 +1798,7 @@ def build_attribute_sql(
     if check.mode == MODE_GROUP:
         names = ", ".join(quote_ident(name) for name, _kind in usable)
         return (
-            "SELECT COALESCE(sum(n - 1), 0) FROM (\n"
+            "SELECT COALESCE(sum(n - 1), 0) FROM (\n"  # nosec B608 - только кавыченные идентификаторы и константы
             "  SELECT count(*) AS n FROM {table}\n"
             "  GROUP BY {columns} HAVING count(*) > 1\n"
             ") AS duplicates"
@@ -1781,22 +1808,21 @@ def build_attribute_sql(
         union = duplicates_union_sql(table, usable)
         if not union:
             return None
-        return "SELECT count(*) FROM (" + union + ") AS d"
+        return render_sql(COUNT_DUPLICATES_SQL, union=union)
 
     if check.mode == MODE_PER_COLUMN:
         parts = [
             "(" + render(check.condition, name) + ")" for name, _kind in usable
         ]
         return (
-            "SELECT COALESCE(sum(c), 0) FROM ("
+            "SELECT COALESCE(sum(c), 0) FROM ("  # nosec B608 - только кавыченные идентификаторы и константы
             + " UNION ALL ".join(parts)
-            + ") AS t(c)"
         )
 
     conditions = " OR ".join(
         "(" + render(check.condition, name) + ")" for name, _kind in usable
     )
-    return "SELECT count(*) FROM {table} WHERE {conditions}".format(
+    return "SELECT count(*) FROM {table} WHERE {conditions}".format(  # nosec B608 - только кавыченные идентификаторы и константы
         table=table.qualified,
         conditions=conditions,
     )

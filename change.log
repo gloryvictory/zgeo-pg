@@ -3,6 +3,37 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.50.0] - 2026-11-18
+
+### Security
+
+- `catalog.fetch_spatial_tables()` no longer builds SQL from names: the two
+  PostGIS view queries are module constants (`VIEW_SQL`), and the schema filter
+  is applied in Python instead of a generated `IN (...)` list.
+- `quote_ident()` is now the only place where an object name enters a query
+  text: it drops control characters, doubles quotes and rejects an empty name,
+  so a name can never close the identifier.
+- Table-bound queries (`count_rows()`, `geometry_has_data()`, index create,
+  reindex and drop) go through `render_sql()` with quoted identifiers instead of
+  string concatenation; every value coming from the database or the user is
+  passed as a bound parameter.
+- Duplicate-check branches moved to the constants `DUPLICATE_GROUP_SQL`,
+  `DUPLICATE_CASE_SQL` and `DUPLICATE_PARTIAL_SQL`, and the detail query binds
+  `LIMIT` as a parameter.
+- `check_history` uses fixed INSERT and CREATE statements per table instead of
+  formatting the table name into them.
+- `explorer.reveal_files()` opens the folder with `QDesktopServices` instead of
+  launching `explorer` / `xdg-open` through `subprocess`, removing the process
+  execution vector and the dependency on external commands.
+- The silent `except: pass` when syncing connections from SQLite now writes a
+  warning to the QGIS message log.
+
+### Notes
+
+- `bandit -r .` reports 0 issues; the 11 remaining `# nosec B608` markers cover
+  `.format()` calls on constant templates where only quoted identifiers and
+  module constants are substituted.
+
 ## [0.49.0] - 2026-11-18
 
 ### Changed

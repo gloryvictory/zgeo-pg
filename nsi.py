@@ -13,18 +13,14 @@ from typing import List, Optional, Sequence, Tuple
 
 from qgis.PyQt.QtSql import QSqlQuery
 
-from .catalog import quote_ident
+from .catalog import quote_ident, render_sql
 from .i18n import tr
 
 # Защита от «разгона» памяти на больших справочниках.
 VALUE_LIMIT = 100000
 
 # Служебные таблицы PostGIS и pgAdmin: в справочниках они только мешают.
-SYSTEM_TABLES = (
-    "'geometry_columns', 'geography_columns', 'spatial_ref_sys', "
-    "'raster_columns', 'raster_overviews'"
-)
-
+# Список — часть строковой константы запроса ниже.
 TABLES_SQL = (
     "SELECT n.nspname, c.relname "
     "FROM pg_catalog.pg_class c "
@@ -34,7 +30,9 @@ TABLES_SQL = (
     "  AND n.nspname NOT LIKE 'pg\\_toast%' "
     "  AND n.nspname NOT LIKE 'pg\\_temp%' "
     "  AND pg_catalog.has_table_privilege(c.oid, 'SELECT') "
-    "  AND c.relname NOT IN (" + SYSTEM_TABLES + ") "
+    "  AND c.relname NOT IN ("
+    "'geometry_columns', 'geography_columns', 'spatial_ref_sys', "
+    "'raster_columns', 'raster_overviews') "
     "ORDER BY n.nspname, c.relname"
 )
 
@@ -170,10 +168,9 @@ def list_text_columns(db, schema: str, name: str) -> List[str]:
 def unique_values_sql(schema: str, name: str, column: str, limit: int) -> str:
     """SQL отсортированного списка уникальных значений столбца."""
 
-    return (
+    return render_sql(
         "SELECT DISTINCT {column}::text AS value FROM {table} "
-        "WHERE {column} IS NOT NULL ORDER BY 1 LIMIT {limit}"
-    ).format(
+        "WHERE {column} IS NOT NULL ORDER BY 1 LIMIT {limit}",
         column=quote_ident(column),
         table=quote_ident(schema) + "." + quote_ident(name),
         limit=int(limit),

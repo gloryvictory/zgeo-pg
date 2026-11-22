@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
+from qgis.core import Qgis, QgsMessageLog
 from qgis.PyQt.QtCore import QSettings, QTimer, Qt
 from qgis.PyQt.QtGui import QIcon
 
@@ -31,10 +32,17 @@ class ZGeoPgPlugin:
         self._settings = QSettings()
         set_language(self._settings.value(LANGUAGE_KEY, "ru"))
         # Параметры подключений из локальной SQLite профиля QGIS.
+        # Ошибка чтения не должна мешать загрузке плагина: параметры можно
+        # ввести вручную на вкладке «Подключения», поэтому сбой только
+        # логируется в отладочный вывод QGIS.
         try:
             sync_connections_from_sqlite()
-        except Exception:  # noqa: BLE001 - плагин должен загрузиться в любом случае
-            pass
+        except Exception as error:  # noqa: BLE001 - плагин должен загрузиться
+            QgsMessageLog.logMessage(
+                tr("Не удалось прочитать соединения из SQLite") + ": " + str(error),
+                "ZGeo-PG",
+                Qgis.Warning,
+            )
         self.action: Optional[QAction] = None
         self.toolbar: Optional[QToolBar] = None
         self.panel: Optional[ZGeoPgPanel] = None

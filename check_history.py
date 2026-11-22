@@ -23,9 +23,12 @@ BUSY_TIMEOUT = 5000
 KIND_SPATIAL = "spatial"
 KIND_ATTRIBUTE = "attribute"
 
+SPATIAL_TABLE = "spatial_checks"
+ATTRIBUTE_TABLE = "attribute_checks"
+
 TABLE_OF = {
-    KIND_SPATIAL: "spatial_checks",
-    KIND_ATTRIBUTE: "attribute_checks",
+    KIND_SPATIAL: SPATIAL_TABLE,
+    KIND_ATTRIBUTE: ATTRIBUTE_TABLE,
 }
 
 COLUMNS = (
@@ -45,6 +48,25 @@ SELECT_COLUMNS = (
     '"id", "run_id", "created", "connection", "schema", '
     '"table_name", "check_key", "check_title", "problems", "error"'
 )
+
+# Готовые тексты INSERT: целиком константы, значения передаются связанными
+# параметрами, поэтому запрос не собирается из данных пользователя.
+SPATIAL_INSERT_SQL = (
+    'INSERT INTO "spatial_checks" ("run_id", "connection", "schema", '
+    '"table_name", "check_key", "check_title", "problems", "error") '
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+)
+
+ATTRIBUTE_INSERT_SQL = (
+    'INSERT INTO "attribute_checks" ("run_id", "connection", "schema", '
+    '"table_name", "check_key", "check_title", "problems", "error") '
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+)
+
+INSERT_SQL = {
+    KIND_SPATIAL: SPATIAL_INSERT_SQL,
+    KIND_ATTRIBUTE: ATTRIBUTE_INSERT_SQL,
+}
 
 
 @dataclass(frozen=True)
@@ -100,19 +122,24 @@ def _open() -> Optional[QSqlDatabase]:
 def _ensure_schema(db) -> bool:
     """Создать таблицы истории, если их ещё нет."""
 
-    for table in TABLE_OF.values():
+    # Имена таблиц и столбцов — константы модуля, внешних данных в тексте
+    # запросов нет.
+    statements = (
+        'CREATE TABLE IF NOT EXISTS "{table}" ({columns})'.format(
+            table=SPATIAL_TABLE, columns=COLUMNS
+        ),
+        'CREATE TABLE IF NOT EXISTS "{table}" ({columns})'.format(
+            table=ATTRIBUTE_TABLE, columns=COLUMNS
+        ),
+        'CREATE INDEX IF NOT EXISTS "{table}_check_idx" '
+        'ON "{table}" ("check_key", "id")'.format(table=SPATIAL_TABLE),
+        'CREATE INDEX IF NOT EXISTS "{table}_check_idx" '
+        'ON "{table}" ("check_key", "id")'.format(table=ATTRIBUTE_TABLE),
+    )
+    for statement in statements:
         query = QSqlQuery(db)
-        if not query.exec(
-            'CREATE TABLE IF NOT EXISTS "{table}" ({columns})'.format(
-                table=table, columns=COLUMNS
-            )
-        ):
+        if not query.exec(statement):
             return False
-        index = QSqlQuery(db)
-        index.exec(
-            'CREATE INDEX IF NOT EXISTS "{table}_check_idx" '
-            'ON "{table}" ("check_key", "id")'.format(table=table)
-        )
     return True
 
 
@@ -144,11 +171,7 @@ def record_run(
     written = 0
     for schema, table_name, check_key, title, problems, error in rows:
         query = QSqlQuery(db)
-        query.prepare(
-            'INSERT INTO "{table}" ("run_id", "connection", "schema", '
-            '"table_name", "check_key", "check_title", "problems", "error") '
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)".format(table=table)
-        )
+        query.prepare(INSERT_SQL[kind])
         query.addBindValue(run_id)
         query.addBindValue(connection_name)
         query.addBindValue(schema)
@@ -227,7 +250,7 @@ def history(
     if table is None:
         return []
     where, bindings = _filter(check_key, layer)
-    sql = 'SELECT {columns} FROM "{table}"{where} ORDER BY "id" DESC LIMIT ?'.format(
+    sql = 'SELECT {columns} FROM "{table}"{where} ORDER BY "id" DESC LIMIT ?'.format(  # nosec B608
         columns=SELECT_COLUMNS, table=table, where=where
     )
     return _records(sql, list(bindings) + [int(limit)])
@@ -244,7 +267,7 @@ def layers(kind: str) -> List[str]:
         return []
     query = QSqlQuery(db)
     sql = (
-        'SELECT DISTINCT "schema", "table_name" FROM "{table}" '
+        'SELECT DISTINCT "schema", "table_name" FROM "{table}" '  # nosec B608 - только кавыченные идентификаторы и константы
         'ORDER BY "schema", "table_name"'
     ).format(table=table)
     if not query.exec(sql):
@@ -270,7 +293,7 @@ def check_keys(kind: str) -> List[Tuple[str, str]]:
         return []
     query = QSqlQuery(db)
     sql = (
-        'SELECT "check_key", max("check_title") FROM "{table}" '
+        'SELECT "check_key", max("check_title") FROM "{table}" '  # nosec B608 - только кавыченные идентификаторы и константы
         'GROUP BY "check_key" ORDER BY "check_key"'
     ).format(table=table)
     if not query.exec(sql):
@@ -300,7 +323,7 @@ def series(
     where, bindings = _filter(check_key, layer)
     query = QSqlQuery(db)
     query.prepare(
-        'SELECT min("created"), sum("problems") FROM "{table}"{where} '
+        'SELECT min("created"), sum("problems") FROM "{table}"{where} '  # nosec B608 - только кавыченные идентификаторы и константы
         'GROUP BY "run_id" ORDER BY min("id") DESC LIMIT ?'.format(
             table=table, where=where
         )
@@ -334,7 +357,7 @@ def _run_ids(kind: str, count: int, check_key: str = "", layer: str = "") -> Lis
     where, bindings = _filter(check_key, layer)
     query = QSqlQuery(db)
     query.prepare(
-        'SELECT "run_id" FROM "{table}"{where} GROUP BY "run_id" '
+        'SELECT "run_id" FROM "{table}"{where} GROUP BY "run_id" '  # nosec B608 - только кавыченные идентификаторы и константы
         'ORDER BY min("id") DESC LIMIT ?'.format(table=table, where=where)
     )
     for value in bindings:
@@ -368,7 +391,7 @@ def _run_totals(
     separator = " AND " if where else " WHERE "
     query = QSqlQuery(db)
     query.prepare(
-        'SELECT "check_key", max("check_title"), sum("problems") FROM "{table}"'
+        'SELECT "check_key", max("check_title"), sum("problems") FROM "{table}"'  # nosec B608 - только кавыченные идентификаторы и константы
         '{where}{separator}"run_id" = ? GROUP BY "check_key"'.format(
             table=table, where=where, separator=separator
         )
@@ -436,4 +459,4 @@ def clear(kind: str) -> bool:
     if db is None:
         return False
     query = QSqlQuery(db)
-    return bool(query.exec('DELETE FROM "{table}"'.format(table=table)))
+    return bool(query.exec('DELETE FROM "{table}"'.format(table=table)))  # nosec B608 - только кавыченные идентификаторы и константы

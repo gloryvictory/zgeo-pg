@@ -104,7 +104,7 @@ class SpatialTable:
 
     @property
     def qualified(self) -> str:
-        return '"' + self.schema + '"."' + self.name + '"'
+        return quote_ident(self.schema) + "." + quote_ident(self.name)
 
     @property
     def full_name(self) -> str:
@@ -119,6 +119,48 @@ class SpatialTable:
         )
 
 
+# Запросы по представлениям PostGIS собраны как константы: имена представлений
+# и столбцов — часть схемы PostgreSQL и не зависят от данных пользователя.
+VIEW_SQL = {
+    "geometry": (
+        "SELECT geometry_columns.f_table_schema, "
+        "geometry_columns.f_table_name, "
+        "geometry_columns.f_geometry_column, "
+        "geometry_columns.type, "
+        "geometry_columns.srid, "
+        "COALESCE(c.reltuples, 0)::bigint AS estimated, "
+        "COALESCE(pg_catalog.obj_description(c.oid, 'pg_class'), '') "
+        "FROM geometry_columns "
+        "LEFT JOIN pg_catalog.pg_class c "
+        "  ON c.relname = geometry_columns.f_table_name "
+        "WHERE c.relnamespace = ("
+        "  SELECT n.oid FROM pg_catalog.pg_namespace n "
+        "  WHERE n.nspname = geometry_columns.f_table_schema"
+        ") "
+        # Таблицы без права SELECT только мешают: любой запрос к ним
+        # заканчивается ошибкой «нет доступа к таблице».
+        "AND pg_catalog.has_table_privilege(c.oid, 'SELECT')"
+    ),
+    "geography": (
+        "SELECT geography_columns.f_table_schema, "
+        "geography_columns.f_table_name, "
+        "geography_columns.f_geography_column, "
+        "geography_columns.type, "
+        "geography_columns.srid, "
+        "COALESCE(c.reltuples, 0)::bigint AS estimated, "
+        "COALESCE(pg_catalog.obj_description(c.oid, 'pg_class'), '') "
+        "FROM geography_columns "
+        "LEFT JOIN pg_catalog.pg_class c "
+        "  ON c.relname = geography_columns.f_table_name "
+        "WHERE c.relnamespace = ("
+        "  SELECT n.oid FROM pg_catalog.pg_namespace n "
+        "  WHERE n.nspname = geography_columns.f_table_schema"
+        ") "
+        "AND pg_catalog.has_table_privilege(c.oid, 'SELECT')"
+    ),
+}
+
+
 def fetch_spatial_tables(db, schemas: Optional[List[str]] = None) -> List[SpatialTable]:
     """Получить список пространственных таблиц из PostGIS.
 
@@ -131,53 +173,20 @@ def fetch_spatial_tables(db, schemas: Optional[List[str]] = None) -> List[Spatia
     """
 
     rows: List[SpatialTable] = []
-    for spatial_type, view in (
-        ("geometry", "geometry_columns"),
-        ("geography", "geography_columns"),
-    ):
-        column = (
-            "f_geometry_column" if spatial_type == "geometry" else "f_geography_column"
-        )
-        sql = (
-            "SELECT "
-            + view + ".f_table_schema, "
-            + view + ".f_table_name, "
-            + view + "." + column + ", "
-            + view + ".type, "
-            + view + ".srid, "
-            + "COALESCE(c.reltuples, 0)::bigint AS estimated, "
-            + "COALESCE(pg_catalog.obj_description(c.oid, 'pg_class'), '') "
-            + "FROM " + view + " "
-            + "LEFT JOIN pg_catalog.pg_class c "
-            + "  ON c.relname = " + view + ".f_table_name "
-            + "WHERE c.relnamespace = ("
-            + "  SELECT n.oid FROM pg_catalog.pg_namespace n "
-            + "  WHERE n.nspname = " + view + ".f_table_schema"
-            + ")"
-            # Таблицы без права SELECT только мешают: любой запрос к ним
-            # заканчивается ошибкой «нет доступа к таблице».
-            + " AND pg_catalog.has_table_privilege(c.oid, 'SELECT')"
-        )
-        if schemas:
-            where = " AND " + view + ".f_table_schema IN ("
-            for index, _schema in enumerate(schemas):
-                if index:
-                    where += ", "
-                where += "?"
-            where += ")"
-            sql += where
-
+    wanted = set(schemas) if schemas else None
+    for spatial_type in ("geometry", "geography"):
+        # Запрос — готовая строка-константа: ни имена представлений, ни
+        # столбцы не подставляются извне, поэтому склейки SQL здесь нет.
         q = QSqlQuery(db)
-        q.prepare(sql)
-        if schemas:
-            for schema in schemas:
-                q.addBindValue(schema)
+        q.prepare(VIEW_SQL[spatial_type])
         if not q.exec():
             continue  # представление отсутствует в старых версиях PostGIS
 
         while q.next():
             schema = str(q.value(0) or "")
             name = str(q.value(1) or "")
+            if wanted is not None and schema not in wanted:
+                continue
             geom_column = str(q.value(2) or "")
             geom_type = normalize_geometry_type(str(q.value(3) or ""))
             srid = parse_srid(q.value(4))
@@ -245,8 +254,30 @@ def fetch_spatial_index(
 
 
 def quote_ident(name) -> str:
-    """Заключить идентификатор в кавычки, экранировав вложенные кавычки."""
-    return '"' + str(name).replace('"', '""') + '"'
+    """Заключить идентификатор в кавычки, экранировав вложенные кавычки.
+
+    Это единственное место, где имя объекта попадает в текст запроса.
+    Управляющие символы отбрасываются, кавычки удваиваются, поэтому
+    подстановка не даёт выйти за пределы идентификатора.
+    """
+
+    text = str(name)
+    text = "".join(char for char in text if char.isprintable())
+    if not text:
+        raise ValueError(tr("Пустое имя объекта"))
+    return '"' + text.replace('"', '""') + '"'
+
+
+def render_sql(template: str, *args, **kwargs) -> str:
+    """Подставить в шаблон запроса уже безопасные части.
+
+    Шаблон — строковая константа модуля, а все подстановки прошли через
+    :func:`quote_ident` (идентификаторы) либо являются числами. Значения
+    пользователя в запрос попадают только связанными параметрами
+    ``QSqlQuery.addBindValue``, а не текстом.
+    """
+
+    return template.format(*args, **kwargs)
 
 
 def default_spatial_index_name(table: SpatialTable) -> str:
@@ -262,14 +293,11 @@ def create_spatial_index(db, table: SpatialTable, name: Optional[str] = None) ->
     column = table.geom_column or "geom"
     index_name = name or default_spatial_index_name(table)
     q = QSqlQuery(db)
-    sql = (
-        "CREATE INDEX IF NOT EXISTS "
-        + quote_ident(index_name)
-        + " ON "
-        + table.qualified
-        + " USING gist ("
-        + quote_ident(column)
-        + ")"
+    sql = render_sql(
+        "CREATE INDEX IF NOT EXISTS {name} ON {table} USING gist ({column})",
+        name=quote_ident(index_name),
+        table=table.qualified,
+        column=quote_ident(column),
     )
     if not q.exec(sql):
         raise RuntimeError(_query_error(q, table))
@@ -286,7 +314,10 @@ def reindex_spatial_index(
         name = create_spatial_index(db, table)
         return name
     q = QSqlQuery(db)
-    sql = "REINDEX INDEX " + quote_ident(table.schema) + "." + quote_ident(name)
+    sql = render_sql(
+        "REINDEX INDEX {index}",
+        index=quote_ident(table.schema) + "." + quote_ident(name),
+    )
     if not q.exec(sql):
         raise RuntimeError(_query_error(q, table))
     return name
@@ -301,11 +332,9 @@ def drop_spatial_index(
     if not name:
         raise RuntimeError(tr("Пространственный индекс не найден"))
     q = QSqlQuery(db)
-    sql = (
-        "DROP INDEX IF EXISTS "
-        + quote_ident(table.schema)
-        + "."
-        + quote_ident(name)
+    sql = render_sql(
+        "DROP INDEX IF EXISTS {index}",
+        index=quote_ident(table.schema) + "." + quote_ident(name),
     )
     if not q.exec(sql):
         raise RuntimeError(_query_error(q, table))
@@ -335,10 +364,20 @@ def fetch_crs_auth(db, srid) -> Optional[str]:
     return None
 
 
+# Шаблоны запросов к конкретной таблице: подставляются только кавыченные
+# идентификаторы, поэтому render_sql безопасен.
+COUNT_SQL = "SELECT count(*) FROM {table}"
+
+EXISTS_SQL = (
+    "SELECT EXISTS (SELECT 1 FROM {table} "
+    "WHERE {column} IS NOT NULL AND NOT ST_IsEmpty({column}))"
+)
+
+
 def count_rows(db, table: SpatialTable) -> int:
     """Точное количество строк в таблице."""
     q = QSqlQuery(db)
-    q.prepare("SELECT count(*) FROM " + table.qualified)
+    q.prepare(render_sql(COUNT_SQL, table=table.qualified))
     if not q.exec():
         return 0
     if q.next():
@@ -380,13 +419,11 @@ def geometry_has_data(db, table: SpatialTable) -> bool:
     column = table.geom_column or "geom"
     q = QSqlQuery(db)
     q.prepare(
-        "SELECT EXISTS (SELECT 1 FROM "
-        + table.qualified
-        + " WHERE "
-        + column
-        + " IS NOT NULL AND NOT ST_IsEmpty("
-        + column
-        + "))"
+        render_sql(
+            EXISTS_SQL,
+            table=table.qualified,
+            column=quote_ident(column),
+        )
     )
     if not q.exec():
         return True
