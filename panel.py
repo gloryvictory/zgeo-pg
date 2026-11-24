@@ -11,7 +11,6 @@ from qgis.PyQt.QtCore import QSettings, Qt, pyqtSignal
 from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import (
     QAbstractItemView,
-    QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -43,13 +42,10 @@ from qgis.PyQt.QtWidgets import (
 
 from .catalog import (
     SpatialTable,
-    create_spatial_index,
     crs_label,
     fetch_crs_auth,
     fetch_spatial_index,
     fetch_spatial_tables,
-    parse_srid,
-    reindex_spatial_index,
 )
 from . import check_history
 from .charts import BarChart, LineChart
@@ -66,7 +62,7 @@ from .connection import (
     save_connection,
 )
 from .formatting import format_number, format_size
-from .i18n import EN_TRANSLATIONS, LANGUAGE_EN, LANGUAGE_KEY, get_language, set_language, tr
+from .i18n import LANGUAGE_EN, LANGUAGE_KEY, get_language, set_language, tr
 from .load_task import IndexTask, LoadTablesTask
 from .nsi import (
     NsiComparison,
@@ -96,11 +92,9 @@ from .stats import (
 )
 from .table_export import (
     FORMAT_HTML,
-    FORMAT_XLSX,
     ask_export_format,
     export_report_with_dialog,
     export_rows_with_dialog,
-    export_sections_with_dialog,
     export_table_with_dialog,
 )
 from .version import get_plugin_version
@@ -2907,7 +2901,9 @@ class ZGeoPgPanel(QDockWidget):
             refresh_action = menu.addAction(tr("Обновить пространственный индекс"))
             drop_action = menu.addAction(tr("Удалить пространственный индекс"))
         else:
-            create_action = menu.addAction(tr("Создать пространственный индекс"))
+            # Пункт «Создать» не нужно запоминать: любой выбор, кроме
+            # «Обновить» и «Удалить», означает создание индекса.
+            menu.addAction(tr("Создать пространственный индекс"))
             refresh_action = None
             drop_action = None
         for item in menu.actions():
@@ -2969,7 +2965,7 @@ class ZGeoPgPanel(QDockWidget):
         answer = QMessageBox.question(
             self,
             "ZGeo-PG",
-            tr("Удалить пространственный индекс") + f"?\n\n" + "\n".join(names[:10]),
+            tr("Удалить пространственный индекс") + "?\n\n" + "\n".join(names[:10]),
         )
         if answer != QMessageBox.StandardButton.Yes:
             return
@@ -3152,7 +3148,9 @@ class ZGeoPgPanel(QDockWidget):
     def _on_test_connection(self) -> None:
         conn = self._current_connection_form()
         try:
-            db = open_connection(conn)
+            # Соединение открывается только чтобы проверить параметры; при
+            # успехе оно сразу закрывается ниже.
+            open_connection(conn)
         except Exception as error:  # noqa: BLE001
             QMessageBox.critical(self, "ZGeo-PG", tr("Ошибка подключения") + ":\n" + str(error))
             return

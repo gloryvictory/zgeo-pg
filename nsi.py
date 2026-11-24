@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Sequence, Tuple
 
 from qgis.PyQt.QtSql import QSqlQuery
 

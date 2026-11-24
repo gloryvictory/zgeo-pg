@@ -13,6 +13,7 @@ from typing import List, Optional, Tuple
 from qgis.PyQt.QtSql import QSqlQuery
 
 from .i18n import tr
+from .sql_identifiers import quote_ident, render_sql
 
 # Типы геометрии, упорядоченные для группировки в статистике.
 GEOMETRY_ORDER = (
@@ -251,33 +252,6 @@ def fetch_spatial_index(
     except (TypeError, ValueError):
         size = None
     return name, size
-
-
-def quote_ident(name) -> str:
-    """Заключить идентификатор в кавычки, экранировав вложенные кавычки.
-
-    Это единственное место, где имя объекта попадает в текст запроса.
-    Управляющие символы отбрасываются, кавычки удваиваются, поэтому
-    подстановка не даёт выйти за пределы идентификатора.
-    """
-
-    text = str(name)
-    text = "".join(char for char in text if char.isprintable())
-    if not text:
-        raise ValueError(tr("Пустое имя объекта"))
-    return '"' + text.replace('"', '""') + '"'
-
-
-def render_sql(template: str, *args, **kwargs) -> str:
-    """Подставить в шаблон запроса уже безопасные части.
-
-    Шаблон — строковая константа модуля, а все подстановки прошли через
-    :func:`quote_ident` (идентификаторы) либо являются числами. Значения
-    пользователя в запрос попадают только связанными параметрами
-    ``QSqlQuery.addBindValue``, а не текстом.
-    """
-
-    return template.format(*args, **kwargs)
 
 
 def default_spatial_index_name(table: SpatialTable) -> str:

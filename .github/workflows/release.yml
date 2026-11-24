@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -t .
+
+      - name: Check the tag matches metadata.txt
+        id: version
+        # Версия в metadata.txt — источник правды: тег vX.Y.Z должен совпадать,
+        # иначе релиз опубликует архив с другим номером.
+        run: |
+          python - <<'PY'
+          import configparser
+          import os
+          import sys
+
+          config = configparser.ConfigParser()
+          config.read("metadata.txt", encoding="utf-8")
+          version = config.get("general", "version")
+          tag = os.environ["GITHUB_REF_NAME"].lstrip("v")
+          if tag != version:
+              sys.exit("tag {} does not match metadata.txt version {}".format(tag, version))
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+              handle.write("version={}\n".format(version))
+          print("version {}".format(version))
+          PY
+
+      - name: Build plugin archive
+        run: python scripts/build_zip.py --output-dir dist
+
+      - name: Extract release notes from change.log
+        run: |
+          python - <<'PY'
+          import configparser
+          import pathlib
+          import re
+
+          config = configparser.ConfigParser()
+          config.read("metadata.txt", encoding="utf-8")
+          version = config.get("general", "version")
+          text = pathlib.Path("change.log").read_text(encoding="utf-8")
+          match = re.search(
+              r"## \[%s\][^\n]*\n(.*?)(?=\n## \[|\Z)" % re.escape(version), text, re.S
+          )
+          body = match.group(1).strip() if match else ""
+          pathlib.Path("release-notes.md").write_text(body + "\n", encoding="utf-8")
+          print(body)
+          PY
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ZGeo-PG ${{ steps.version.outputs.version }}
+          body_path: release-notes.md
+          files: dist/zgeo-pg-*.zip
+          fail_on_unmatched_files: true

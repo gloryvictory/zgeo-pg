@@ -2,9 +2,11 @@ __pycache__/
 *.py[cod]
 .idea/
 .vscode/
-# dist/
 .empryo/
 .ruff_cache/
+
+# Release archives are built locally and published as GitHub release assets.
+dist/
 
 # Local AI agent instructions
 AGENTS.md

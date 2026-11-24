@@ -10,7 +10,7 @@ import datetime
 import re
 import zipfile
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Iterable, List, Sequence, Tuple, Union
 
 CellValue = Union[str, int, float, None]
 

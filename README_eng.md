@@ -4,7 +4,7 @@
 
 QGIS plugin for quality control of spatial data stored in a PostgreSQL / PostGIS database.
 
-Plugin version: **0.50.1**  
+Plugin version: **0.51.0**  
 Release history: [change.log](change.log)
 
 The plugin adds a **"ZGeo-PG"** toolbar panel in QGIS with a **"ZGeo-PG Catalog"** button that opens a floating panel. In the panel:
@@ -83,8 +83,11 @@ zgeo-pg/
 ├── check_history.py     # quality check history in the local SQLite
 ├── charts.py            # bar charts without external dependencies
 ├── load_task.py         # background loading of table characteristics
+├── layer_loader.py      # load a PostGIS table into the current QGIS project
 ├── quality.py           # spatial and attribute data quality checks
 ├── nsi.py               # reference data comparison: tables, fields, unique values
+├── sql_errors.py        # query and permission error texts
+├── sql_identifiers.py   # quoting object names in SQL
 ├── info_dialog.py       # "Table Information" dialog
 ├── explorer.py          # open files in Explorer
 ├── formatting.py        # formatting sizes and numbers
@@ -94,8 +97,8 @@ zgeo-pg/
 ├── version.py           # plugin version from metadata.txt
 ├── icon.svg             # plugin icon
 ├── img/                 # interface screenshots for the documentation (not packed)
-├── LICENSE.md           # MIT license
-├── scripts/             # build scripts
+├── LICENSE              # MIT license
+├── scripts/             # archive build (build_zip.py) and QGIS install
 └── .gitignore           # ignored files
 ```
 
@@ -106,8 +109,13 @@ Workflow for every task:
 1. bump the version in `metadata.txt` and prepend a line to its `changelog`;
 2. fill `change.log` in English (new section on top);
 3. update `README.md` and `README_eng.md`;
-4. build and install with `scripts\build_zip.ps1` — only the latest archive stays in `dist`, and that version is installed into the QGIS 4.x profile (the script closes and reopens QGIS itself);
-5. commit.
+4. check locally: `ruff check .` and `python -m unittest discover -s tests -t .`;
+5. build and install with `scripts\build_zip.ps1` — only the latest archive stays in `dist`, and that version is installed into the QGIS 4.x profile (the script closes and reopens QGIS itself);
+6. commit and tag `v<version>`, then `git push origin main v<version>`.
+
+The same checks run on GitHub Actions: `.github/workflows/ci.yml` runs ruff, the unit tests and the archive build on every push and pull request, while `.github/workflows/release.yml` runs on a `v*` tag, compares the tag with `metadata.txt`, builds the archive, takes the release text from `change.log` and publishes the GitHub release with the zip attached.
+
+Archives are not committed: `dist/` is in `.gitignore` and the builds live in the release assets.
 
 ## Installation in QGIS
 
@@ -119,7 +127,7 @@ Build the archive:
 powershell -ExecutionPolicy Bypass -File .\scripts\build_zip.ps1
 ```
 
-The ready file will appear in `dist\zgeo-pg-0.50.1.zip`. Only the latest build is kept in `dist`.
+The ready file will appear in `dist\zgeo-pg-0.51.0.zip`. Only the latest build is kept in `dist`.
 
 The top-level folder inside the archive is `zgeo_pg`: QGIS imports it as a Python module, so the name must be a PEP 8 identifier and the repository name `zgeo-pg` with its hyphen does not qualify. The displayed plugin name (`ZGeo-PG`) comes from `metadata.txt` and stays unchanged.
 
@@ -171,4 +179,4 @@ The last selected connection is remembered and used as the starting point for th
 
 ## License
 
-MIT License — see LICENSE.md file
+MIT License — see the LICENSE file

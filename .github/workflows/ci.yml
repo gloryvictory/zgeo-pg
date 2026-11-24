@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install ruff
+        run: pip install ruff
+      - name: Run ruff
+        run: ruff check --output-format=github .
+
+  tests:
+    name: Unit tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Run unit tests
+        # Тесты не импортируют qgis: модули, зависящие от QGIS, проверяются
+        # разбором AST в tests/test_structure.py.
+        run: python -m unittest discover -s tests -t . -v
+
+  package:
+    name: Build plugin archive
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Build zip
+        run: python scripts/build_zip.py --output-dir dist
+      - name: Check archive contents
+        # Архив устанавливается в QGIS по имени корневой папки, поэтому она
+        # должна быть валидным идентификатором Python и без служебных файлов.
+        run: |
+          python - <<'PY'
+          import pathlib
+          import sys
+          import zipfile
+
+          archive = next(pathlib.Path("dist").glob("zgeo-pg-*.zip"))
+          with zipfile.ZipFile(archive) as zf:
+              names = zf.namelist()
+          roots = {name.split("/")[0] for name in names}
+          if roots != {"zgeo_pg"}:
+              sys.exit("unexpected archive root: {}".format(roots))
+          forbidden = (
+              "img/", "tests/", "scripts/", "dist/", "__pycache__/",
+              ".github/", "AGENTS.md", "agents.md",
+          )
+          bad = [name for name in names if any(marker in name for marker in forbidden)]
+          if bad:
+              sys.exit("forbidden files in archive: {}".format(bad))
+          print("{} entries, root {}, version in name: {}".format(
+              len(names), roots, archive.name))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zgeo-pg-plugin
+          path: dist/zgeo-pg-*.zip
+          if-no-files-found: error

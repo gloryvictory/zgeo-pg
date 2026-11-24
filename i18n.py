@@ -193,6 +193,7 @@ EN_TRANSLATIONS = {
         "There are no results — click \"Run checks\""
     ),
     "Ошибка запроса": "Query failed",
+    "Пустое имя объекта": "Empty object name",
     "Сначала подключитесь к базе данных": "Connect to a database first",
     "Список таблиц пуст — нажмите «Обновить»": (
         "The table list is empty — click \"Refresh\""

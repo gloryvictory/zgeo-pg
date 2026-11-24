@@ -7,8 +7,7 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 from qgis.PyQt.QtCore import QThread, pyqtSignal
 

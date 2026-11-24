@@ -11,7 +11,7 @@ from qgis.PyQt.QtWidgets import (
     QVBoxLayout,
 )
 
-from .catalog import SpatialTable, crs_label, fetch_crs_auth
+from .catalog import SpatialTable, crs_label
 from .formatting import format_number, format_size
 from .i18n import tr
 

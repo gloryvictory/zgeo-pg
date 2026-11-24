@@ -5,6 +5,10 @@ param(
     [switch]$NoRestart
 )
 
+# Содержимое архива собирает scripts/build_zip.py: один источник правды для
+# локальной сборки и CI. Этот скрипт добавляет установку в профиль QGIS и
+# перезапуск QGIS Desktop.
+
 # Profile plugins directories used by QGIS Desktop 4.x (4.2.3 on this machine).
 function Get-DefaultQGISPluginDirectories {
     $profileBase = Join-Path $env:APPDATA "QGIS\QGIS4\profiles"
@@ -82,148 +86,85 @@ function Start-QGISAgain {
 $ErrorActionPreference = "Stop"
 
 $pluginRoot = Split-Path -Parent $PSScriptRoot
-$pluginName = Split-Path -Leaf $pluginRoot
+$buildScript = Join-Path $PSScriptRoot "build_zip.py"
 
-# QGIS installs the archive by its top-level folder name and imports that folder
-# as a Python package, so the name must be a PEP 8 identifier. The repository
-# folder "zgeo-pg" contains a hyphen, therefore the archive root is "zgeo_pg".
-$packageName = $pluginName -replace "[^0-9A-Za-z_]", "_"
-if ($packageName -match "^[0-9]") {
-    $packageName = "_" + $packageName
-}
-if ($packageName -notmatch "^[A-Za-z_][0-9A-Za-z_]*$") {
-    throw "Package name is not a valid Python identifier: $packageName"
+if (-not (Test-Path -LiteralPath $buildScript)) {
+    throw "build_zip.py not found: $buildScript"
 }
 
-$metadataPath = Join-Path $pluginRoot "metadata.txt"
-
-if (-not (Test-Path -LiteralPath $metadataPath)) {
-    throw "metadata.txt not found: $metadataPath"
+$python = Get-Command python -ErrorAction SilentlyContinue
+if (-not $python) {
+    throw "python is required to build the archive"
 }
-
-$versionLine = Select-String -LiteralPath $metadataPath -Pattern '^version=(.+)$'
-if (-not $versionLine) {
-    throw "version is not defined in metadata.txt"
-}
-$version = $versionLine.Matches[0].Groups[1].Value.Trim()
 
 if (-not $OutputDirectory) {
     $OutputDirectory = Join-Path $pluginRoot "dist"
 }
 
-$stagingRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("zgeo-pg-build-" + [guid]::NewGuid().ToString("N"))
-$stagingPlugin = Join-Path $stagingRoot $packageName
+# QGIS installs the archive by its top-level folder name and imports that folder
+# as a Python package, so the name must be a PEP 8 identifier. The repository
+# folder "zgeo-pg" contains a hyphen, therefore the archive root is "zgeo_pg".
+$packageName = "zgeo_pg"
 
-try {
-    New-Item -ItemType Directory -Path $stagingPlugin -Force | Out-Null
-    New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
+& $python.Source $buildScript --output-dir $OutputDirectory
+if ($LASTEXITCODE -ne 0) {
+    throw "build_zip.py failed with exit code $LASTEXITCODE"
+}
 
-    # img/ — скриншоты для README, в архиве плагина они не нужны.
-    $excludedNames = @(
-        "__pycache__",
-        "dist",
-        "scripts",
-        "tests",
-        "img",
-        ".git",
-        ".gitignore",
-        ".idea",
-        ".vscode",
-        ".empryo",
-        ".pytest_cache",
-        ".ruff_cache",
-        "AGENTS.md",
-        "agents.md"
-    )
+$zipPath = Get-ChildItem -LiteralPath $OutputDirectory -Filter "zgeo-pg-*.zip" -File |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1
+if (-not $zipPath) {
+    throw "archive was not created in $OutputDirectory"
+}
 
-    Get-ChildItem -LiteralPath $pluginRoot -Force | Where-Object {
-        $excludedNames -notcontains $_.Name
-    } | ForEach-Object {
-        Copy-Item -LiteralPath $_.FullName -Destination $stagingPlugin -Recurse -Force
+if (-not $SkipQGISInstall) {
+    $targets = if ($QGISPluginDirectories) {
+        @($QGISPluginDirectories)
+    } else {
+        Get-DefaultQGISPluginDirectories
     }
 
-    Get-ChildItem -LiteralPath $stagingPlugin -Recurse -Directory -Filter "__pycache__" |
-        Remove-Item -Recurse -Force
-
-    $zipPath = Join-Path $OutputDirectory "$pluginName-$version.zip"
-    if (Test-Path -LiteralPath $zipPath) {
-        Remove-Item -LiteralPath $zipPath -Force
+    if (-not $targets) {
+        Write-Warning "No QGIS profile plugins directory found; skipping install."
     }
 
-    Add-Type -AssemblyName System.IO.Compression
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $closed = Stop-RunningQGIS
 
-    $archive = [System.IO.Compression.ZipFile]::Open(
-        $zipPath,
-        [System.IO.Compression.ZipArchiveMode]::Create
-    )
+    $unpackRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("zgeo-pg-unpack-" + [guid]::NewGuid().ToString("N"))
     try {
-        Get-ChildItem -LiteralPath $stagingPlugin -Recurse -File | ForEach-Object {
-            $relativePath = $_.FullName.Substring($stagingPlugin.Length + 1).Replace("\", "/")
-            $entryName = "$packageName/$relativePath"
-            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
-                $archive,
-                $_.FullName,
-                $entryName,
-                [System.IO.Compression.CompressionLevel]::Optimal
-            ) | Out-Null
+        Expand-Archive -LiteralPath $zipPath.FullName -DestinationPath $unpackRoot -Force
+        $unpacked = Join-Path $unpackRoot $packageName
+        if (-not (Test-Path -LiteralPath $unpacked)) {
+            throw "archive has no $packageName folder: $($zipPath.FullName)"
         }
-    }
-    finally {
-        $archive.Dispose()
-    }
-
-    Write-Host "Created: $zipPath (root folder: $packageName)"
-
-    # Keep only the latest build in the output directory.
-    Get-ChildItem -LiteralPath $OutputDirectory -Filter "$pluginName-*.zip" -File |
-        Where-Object { $_.FullName -ne (Resolve-Path -LiteralPath $zipPath).Path } |
-        ForEach-Object {
-            Remove-Item -LiteralPath $_.FullName -Force
-            Write-Host "Removed stale build: $($_.Name)"
-        }
-
-    if (-not $SkipQGISInstall) {
-        $targets = if ($QGISPluginDirectories) {
-            @($QGISPluginDirectories)
-        } else {
-            Get-DefaultQGISPluginDirectories
-        }
-
-        if (-not $targets) {
-            Write-Warning "No QGIS profile plugins directory found; skipping install."
-        }
-
-        $closed = Stop-RunningQGIS
 
         foreach ($pluginsDirectory in $targets) {
             $target = Join-Path $pluginsDirectory $packageName
             # Drop an install made under the old, non-identifier folder name.
-            if ($pluginName -ne $packageName) {
-                $stale = Join-Path $pluginsDirectory $pluginName
-                if (Test-Path -LiteralPath $stale) {
-                    Remove-Item -LiteralPath $stale -Recurse -Force
-                    Write-Host "Removed stale install: $stale"
-                }
+            $stale = Join-Path $pluginsDirectory "zgeo-pg"
+            if (Test-Path -LiteralPath $stale) {
+                Remove-Item -LiteralPath $stale -Recurse -Force
+                Write-Host "Removed stale install: $stale"
             }
             if (Test-Path -LiteralPath $target) {
                 Remove-Item -LiteralPath $target -Recurse -Force
             }
-            Copy-Item -LiteralPath $stagingPlugin -Destination $target -Recurse -Force
+            Copy-Item -LiteralPath $unpacked -Destination $target -Recurse -Force
             Get-ChildItem -LiteralPath $target -Recurse -Directory -Filter "__pycache__" -ErrorAction SilentlyContinue |
                 Remove-Item -Recurse -Force
-            Write-Host "Installed: $target (version $version)"
+            Write-Host "Installed: $target"
         }
-
-        if ($closed.Count -gt 0 -and -not $NoRestart) {
-            Start-QGISAgain -Executables $closed
+    }
+    finally {
+        if (Test-Path -LiteralPath $unpackRoot) {
+            Remove-Item -LiteralPath $unpackRoot -Recurse -Force
         }
     }
 
-    Write-Host "Install in QGIS: Plugins > Manage and Install Plugins > Install from ZIP"
-}
-finally {
-    if (Test-Path -LiteralPath $stagingRoot) {
-        Remove-Item -LiteralPath $stagingRoot -Recurse -Force
+    if ($closed.Count -gt 0 -and -not $NoRestart) {
+        Start-QGISAgain -Executables $closed
     }
 }
+
+Write-Host "Install in QGIS: Plugins > Manage and Install Plugins > Install from ZIP"

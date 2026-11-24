@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Iterable, List, Optional, Sequence, Tuple
+from typing import List, Sequence, Tuple
 
 from qgis.PyQt.QtCore import QSize, Qt
 from qgis.PyQt.QtGui import QColor, QFont, QPainter, QPen
@@ -201,7 +201,6 @@ class BarChart(QWidget):
 
     def _draw(self, painter: QPainter) -> None:
         width = self.width()
-        height = self.height()
         margin_left = 14
         margin_right = 96
         margin_top = 26
