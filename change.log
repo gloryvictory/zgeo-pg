@@ -3,6 +3,26 @@
 All notable changes to the ZGeo-PG QGIS plugin are documented in this file.
 Entries are written in English, newest first, and match the version in `metadata.txt`.
 
+## [0.50.1] - 2026-11-24
+
+### Fixed
+
+- `plugin.py`: the message level passed to `QgsMessageLog.logMessage()` is now
+  the explicit `Qgis.MessageLevel.Warning` enum member instead of the deprecated
+  `Qgis.Warning` access. The plugin repository validator reports the old form as
+  "Enum error, add 'MessageLevel' before 'Warning'" on Qt 6 and blocks the
+  version from being published. The scoped form works on QGIS 3.16 as well, so
+  the lower compatibility bound is unchanged.
+- `quality.py`: `duplicate_details()` raised `NameError: query_error` when the
+  detail query for the attribute duplicates check failed, hiding the database
+  error behind a Python traceback (F821). The helper now comes from
+  `sql_errors.py`.
+- `table_export.py`: `Tuple` is imported from `typing`; the section and report
+  export functions used it in their annotations without importing it (F821).
+- `nsi.py`: the query error helpers moved to `sql_errors.py` so the reference
+  data tab, the quality checks and the panel share one implementation and one
+  translation of the "no access to the table" case.
+
 ## [0.50.0] - 2026-11-18
 
 ### Security

@@ -14,7 +14,8 @@ from typing import List, Optional, Sequence, Tuple
 from qgis.PyQt.QtSql import QSqlQuery
 
 from .catalog import quote_ident, render_sql
-from .i18n import tr
+# Тексты ошибок запросов и пометка прав доступа общие для модулей плагина.
+from .sql_errors import query_error
 
 # Защита от «разгона» памяти на больших справочниках.
 VALUE_LIMIT = 100000
@@ -105,43 +106,6 @@ def list_tables(db) -> Tuple[List[Tuple[str, str]], int, int]:
         return [], 0, 0
     return _read_tables(QSqlQuery(db), UNFILTERED_TABLES_SQL), total, 0
 
-
-# Пометка ошибки прав доступа: текст собирается при показе, чтобы он
-# переключался вместе с языком интерфейса. Наружу выходит только через
-# readable_error().
-PERMISSION_MARK = "permission-mark::"
-
-
-def permission_error(table_note: str = "") -> str:
-    """Текст ошибки прав доступа с пометкой для повторного перевода."""
-
-    return PERMISSION_MARK + table_note
-
-
-def readable_error(message: str) -> str:
-    """Перевести служебную пометку ошибки в текст на текущем языке."""
-
-    if message.startswith(PERMISSION_MARK):
-        note = message[len(PERMISSION_MARK):]
-        text = tr("Нет доступа к таблице")
-        return text + (": " + note if note else "")
-    return message
-
-
-def query_error(query, table_note: str = "") -> str:
-    """Понятный текст ошибки запроса: права доступа переводятся отдельно."""
-
-    error = query.lastError()
-    text = (error.databaseText() or error.text() or "").strip()
-    code = str(error.nativeErrorCode() or "")
-    lowered = text.casefold()
-    if code == "42501" or "permission denied" in lowered or "нет доступа" in lowered:
-        return permission_error(table_note)
-    for prefix in ("ОШИБКА:", "ERROR:", "ОШИБКА :"):
-        if text.upper().startswith(prefix):
-            text = text[len(prefix):].strip()
-            break
-    return text or tr("Ошибка запроса")
 
 
 def list_text_columns(db, schema: str, name: str) -> List[str]:

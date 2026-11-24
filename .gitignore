@@ -4,3 +4,8 @@ __pycache__/
 .vscode/
 # dist/
 .empryo/
+.ruff_cache/
+
+# Local AI agent instructions
+AGENTS.md
+agents.md

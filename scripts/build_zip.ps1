@@ -130,7 +130,10 @@ try {
         ".idea",
         ".vscode",
         ".empryo",
-        ".pytest_cache"
+        ".pytest_cache",
+        ".ruff_cache",
+        "AGENTS.md",
+        "agents.md"
     )
 
     Get-ChildItem -LiteralPath $pluginRoot -Force | Where-Object {

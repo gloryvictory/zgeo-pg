@@ -19,6 +19,7 @@ from qgis.PyQt.QtSql import QSqlQuery
 from .catalog import SpatialTable, quote_ident, render_sql
 from .connection import PGConnection, close_connection, open_connection
 from .i18n import tr
+from .sql_errors import query_error
 
 # Типы, для которых имеет смысл проверка "смешанные типы геометрии".
 KNOWN_GEOMETRY_TYPES = (

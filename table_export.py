@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable, Optional, Sequence
+from typing import Iterable, Optional, Sequence, Tuple
 
 from qgis.PyQt.QtCore import QStandardPaths, Qt
 from qgis.PyQt.QtWidgets import QFileDialog, QMenu, QMessageBox, QTableWidget

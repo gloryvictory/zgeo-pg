@@ -41,7 +41,7 @@ class ZGeoPgPlugin:
             QgsMessageLog.logMessage(
                 tr("Не удалось прочитать соединения из SQLite") + ": " + str(error),
                 "ZGeo-PG",
-                Qgis.Warning,
+                Qgis.MessageLevel.Warning,
             )
         self.action: Optional[QAction] = None
         self.toolbar: Optional[QToolBar] = None

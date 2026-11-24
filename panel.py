@@ -74,7 +74,6 @@ from .nsi import (
     fetch_unique_values,
     list_tables,
     list_text_columns,
-    readable_error,
 )
 from .quality import (
     ATTRIBUTE_CHECKS,
@@ -88,6 +87,7 @@ from .quality import (
     load_thresholds,
     save_thresholds,
 )
+from .sql_errors import readable_error
 from .stats import (
     build_geometry_type_distribution,
     build_schema_distribution,
